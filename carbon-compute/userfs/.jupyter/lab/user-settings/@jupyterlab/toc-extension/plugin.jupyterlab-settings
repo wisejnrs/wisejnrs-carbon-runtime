@@ -1,0 +1,8 @@
+{
+  "numberingH1": true,
+  "numbering": true,
+  "collapsibleNotebooks": true,
+  "includeOutput": false,
+  "collapseToCurrentHeading": true,
+  "showCode": false
+}

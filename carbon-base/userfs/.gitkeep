@@ -1,0 +1,2 @@
+# This file ensures the rootfs directory is tracked in git
+# Add any root filesystem files here

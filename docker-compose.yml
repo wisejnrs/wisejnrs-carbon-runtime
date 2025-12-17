@@ -1,0 +1,411 @@
+version: '3.8'
+
+# Docker Compose with profiles for different use cases
+# Usage:
+#   docker compose --profile minimal up           # Base image only
+#   docker compose --profile ml up                # ML/AI workstation
+#   docker compose --profile creative up          # Creative tools
+#   docker compose --profile dev up               # Development with databases
+#   docker compose --profile full up              # Everything
+#
+# Multiple profiles:
+#   docker compose --profile ml --profile databases up
+
+services:
+  # ===== BASE IMAGE (GPU-enabled with CPU fallback) =====
+  carbon-base:
+    image: wisejnrs/carbon-base:latest
+    container_name: carbon-base
+    build:
+      context: ./carbon-base
+      dockerfile: Dockerfile
+    ports:
+      - "3390:3389"   # xRDP
+      - "5900:5901"   # VNC
+      - "6900:6900"   # noVNC
+    volumes:
+      - ./work:/work
+      - carbon-base-home:/home/carbon
+    environment:
+      - DISPLAY=:0
+      - DEFAULT_USER=carbon
+      - DEFAULT_PASSWORD=Carbon123#
+      - GRANT_SUDO=yes
+      - VNC_RESOLUTION=1920x1080
+      # Disable services by default
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+      - ENABLE_OLLAMA=false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - carbon-network
+    profiles:
+      - minimal
+      - base
+
+  # ===== COMPUTE IMAGE (ML/AI) =====
+  carbon-compute:
+    image: wisejnrs/carbon-compute:latest
+    container_name: carbon-compute
+    build:
+      context: ./carbon-compute
+      dockerfile: Dockerfile
+      args:
+        ROOT_CONTAINER: wisejnrs/carbon-base:latest
+    ports:
+      - "3391:3389"   # xRDP (alternate port)
+      - "5901:5901"   # VNC
+      - "6901:6900"   # noVNC
+      - "8888:8888"   # Jupyter Lab
+      - "9999:9999"   # VS Code Server (code-server)
+      - "8080:8080"   # Spark Master UI
+      - "8081:8081"   # Spark Worker UI
+      - "7077:7077"   # Spark Master
+      - "4040:4040"   # Spark Application UI
+      - "2222:22"     # SSH
+    volumes:
+      - ./work:/work
+      - ./notebooks:/home/carbon/notebooks
+      - carbon-compute-home:/home/carbon
+      - spark-logs:/spark/logs
+      - jupyter-config:/home/carbon/.jupyter
+    environment:
+      - DISPLAY=:0
+      - DEFAULT_USER=carbon
+      - DEFAULT_PASSWORD=Carbon123#
+      - GRANT_SUDO=yes
+      - VNC_RESOLUTION=1920x1080
+      # Jupyter settings
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=
+      - JUPYTER_START_DIR=/home/carbon
+      # Spark settings
+      - ENABLE_SPARK=true
+      - SPARK_MASTER_URL=spark://localhost:7077
+      # Service toggles
+      - ENABLE_JUPYTER=true
+      - ENABLE_CODE_SERVER=true
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: 16G
+    restart: unless-stopped
+    networks:
+      - carbon-network
+    profiles:
+      - ml
+      - data-science
+      - compute
+      - full
+
+  # ===== TOOLS IMAGE (Creative/Security) =====
+  carbon-tools:
+    image: wisejnrs/carbon-tools:latest
+    container_name: carbon-tools
+    build:
+      context: ./carbon-tools
+      dockerfile: Dockerfile
+      args:
+        ROOT_CONTAINER: wisejnrs/carbon-base:latest
+    ports:
+      - "3392:3389"   # xRDP (alternate port)
+      - "5902:5901"   # VNC
+      - "6902:6900"   # noVNC
+      - "3000:3000"   # Web development server
+      - "2223:22"     # SSH
+    volumes:
+      - ./work:/work
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker CLI access
+      - carbon-tools-home:/home/carbon
+    environment:
+      - DISPLAY=:0
+      - DEFAULT_USER=carbon
+      - DEFAULT_PASSWORD=Carbon123#
+      - GRANT_SUDO=yes
+      - VNC_RESOLUTION=1920x1080
+      # Service toggles
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - carbon-network
+    profiles:
+      - creative
+      - security
+      - tools
+      - full
+
+  # ===== STANDALONE SPARK CLUSTER =====
+  spark-master:
+    image: wisejnrs/carbon-compute:latest
+    container_name: spark-master
+    hostname: spark-master
+    command: /spark/sbin/start-master.sh -h spark-master
+    ports:
+      - "7078:7077"   # Spark Master (alternate port)
+      - "8082:8080"   # Spark Master UI (alternate port)
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    volumes:
+      - ./work:/work
+      - spark-cluster-logs:/spark/logs
+    networks:
+      - carbon-network
+    profiles:
+      - spark-cluster
+      - full
+
+  spark-worker-1:
+    image: wisejnrs/carbon-compute:latest
+    container_name: spark-worker-1
+    command: /spark/sbin/start-worker.sh spark://spark-master:7077
+    depends_on:
+      - spark-master
+    ports:
+      - "8083:8081"   # Spark Worker UI
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=4
+      - SPARK_WORKER_MEMORY=8g
+      - SPARK_WORKER_PORT=8081
+      - SPARK_WORKER_WEBUI_PORT=8081
+    volumes:
+      - ./work:/work
+      - spark-cluster-logs:/spark/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - carbon-network
+    profiles:
+      - spark-cluster
+      - full
+
+  # ===== DATABASE SERVICES =====
+  postgres:
+    image: postgres:15-alpine
+    container_name: carbon-postgres
+    environment:
+      - POSTGRES_DB=carbondb
+      - POSTGRES_USER=carbon
+      - POSTGRES_PASSWORD=Carbon123#
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carbon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbon-network
+    profiles:
+      - databases
+      - dev
+      - full
+
+  postgres-pgvector:
+    image: ankane/pgvector:latest
+    container_name: carbon-postgres-pgvector
+    environment:
+      - POSTGRES_DB=vectordb
+      - POSTGRES_USER=carbon
+      - POSTGRES_PASSWORD=Carbon123#
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-vector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carbon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbon-network
+    profiles:
+      - databases
+      - ml
+      - full
+
+  redis:
+    image: redis:7-alpine
+    container_name: carbon-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass Carbon123#
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbon-network
+    profiles:
+      - databases
+      - dev
+      - full
+
+  mongodb:
+    image: mongo:7
+    container_name: carbon-mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=carbon
+      - MONGO_INITDB_ROOT_PASSWORD=Carbon123#
+      - MONGO_INITDB_DATABASE=carbondb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbon-network
+    profiles:
+      - databases
+      - dev
+      - full
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: carbon-qdrant
+    ports:
+      - "6333:6333"   # HTTP API
+      - "6334:6334"   # gRPC API
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT_ALLOW_RECOVERY_MODE=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbon-network
+    profiles:
+      - databases
+      - ml
+      - full
+
+  # ===== OLLAMA (Local LLM) =====
+  ollama:
+    image: ollama/ollama:latest
+    container_name: carbon-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - carbon-network
+    profiles:
+      - ml
+      - ai
+      - full
+
+  # ===== MONITORING =====
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: carbon-portainer
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    restart: unless-stopped
+    networks:
+      - carbon-network
+    profiles:
+      - monitoring
+      - dev
+      - full
+
+volumes:
+  # Carbon homes
+  carbon-base-home:
+    driver: local
+  carbon-tools-home:
+    driver: local
+  carbon-compute-home:
+    driver: local
+
+  # Application data
+  spark-logs:
+    driver: local
+  spark-cluster-logs:
+    driver: local
+  jupyter-config:
+    driver: local
+
+  # Database data
+  postgres-data:
+    driver: local
+  postgres-vector-data:
+    driver: local
+  redis-data:
+    driver: local
+  mongodb-data:
+    driver: local
+  qdrant-data:
+    driver: local
+
+  # AI/ML
+  ollama-data:
+    driver: local
+
+  # Monitoring
+  portainer-data:
+    driver: local
+
+networks:
+  carbon-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

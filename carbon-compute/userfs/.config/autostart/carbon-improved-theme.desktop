@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Carbon Improved Theme
+Comment=Apply improved window decorations and theme
+Exec=bash /home/carbon/.config/cinnamon/improved-decorations.sh
+Icon=preferences-desktop-theme
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true

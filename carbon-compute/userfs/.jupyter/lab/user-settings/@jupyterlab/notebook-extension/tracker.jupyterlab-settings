@@ -1,0 +1,8 @@
+{
+  // Basic notebook behaviour
+  "recordTiming": true,
+  "codeCellConfig": {
+    "lineNumbers": true
+  },  
+  "scrollPastEnd": true
+}

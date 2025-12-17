@@ -1,0 +1,36 @@
+# Local environment configuration
+.env
+.env.local
+
+# Data directories
+work/
+data/
+/data/
+/work/
+
+# Build logs
+*.log
+
+# Docker volumes
+carbon-*-data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Blog posts and verification reports
+blog-post-*.md
+*VERIFICATION_REPORT.md
+test-all-blog-examples.sh
+test_example*.py
