@@ -405,7 +405,7 @@ RUN set -eux; \
   echo "Qdrant ${QDRANT_VERSION} installed (or skipped if unavailable)"
 
 # ===== Swift, MS repos/CLI/SDKs, cleanup & hardening =====
-RUN set -eux; \
+RUN set -ux; \
   mkdir -p /usr/local/bin /var/run/dbus /etc/apt/keyrings; \
   chmod 775 /usr/local/bin; chmod 777 /var/run/dbus; \
   \
@@ -424,18 +424,16 @@ RUN set -eux; \
   fi; \
   if [ -n "$SWIFT_URL" ]; then \
     echo "Downloading Swift (this may take a while, ~500MB)..."; \
-    if curl -fL --retry 3 --retry-delay 5 --max-time 600 --connect-timeout 30 \
-        "$SWIFT_URL" -o /tmp/swift.tar.gz; then \
-      echo "Swift downloaded, extracting..."; \
-      tar -xzf /tmp/swift.tar.gz -C /tmp; rm -f /tmp/swift.tar.gz; \
-      (cd "/tmp/$SWIFT_DIR" && find . | cpio -pdv /); \
-      rm -rf "/tmp/$SWIFT_DIR"; \
-      echo "Swift installed successfully"; \
-    else \
-      echo "[WARN] Swift download failed after retries, skipping Swift installation"; \
-      rm -f /tmp/swift.tar.gz || true; \
-    fi; \
+    ( curl -fL --retry 3 --retry-delay 5 --max-time 600 --connect-timeout 30 \
+        "$SWIFT_URL" -o /tmp/swift.tar.gz && \
+      echo "Swift downloaded, extracting..." && \
+      tar -xzf /tmp/swift.tar.gz -C /tmp && rm -f /tmp/swift.tar.gz && \
+      (cd "/tmp/$SWIFT_DIR" && find . | cpio -pdv /) && \
+      rm -rf "/tmp/$SWIFT_DIR" && \
+      echo "Swift installed successfully" \
+    ) || echo "[WARN] Swift download/install failed, skipping Swift"; \
   fi; \
+  set -e; \
   \
   # --- (Best-effort) import Swift release keys; do not fail the build if unavailable ---
   export GNUPGHOME="$(mktemp -d)"; \
