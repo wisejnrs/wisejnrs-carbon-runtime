@@ -26,8 +26,13 @@ A complete suite of Docker images providing GPU-accelerated development environm
 - **macOS + Docker** → Development environment (CPU-based, easy setup)
 - **macOS + Podman** → Development + GPU inference (Vulkan, 3-4x speedup)
 
-📖 **macOS Users:** See [START-HERE-MACOS.md](START-HERE-MACOS.md) for complete guide!
-📖 **GPU Options:** See [DOCKER-MACOS-LIMITATION.md](DOCKER-MACOS-LIMITATION.md) and [PODMAN-GPU-OPTION.md](PODMAN-GPU-OPTION.md)
+📖 **macOS Users - Complete Documentation:**
+- **[COMPLETE-MACOS-GUIDE.md](COMPLETE-MACOS-GUIDE.md)** ⭐ - All 3 runtimes compared (Docker, Podman, Apple Container)
+- **[START-HERE-MACOS.md](START-HERE-MACOS.md)** - Quick start guide
+- **[DOCKER-MACOS-LIMITATION.md](DOCKER-MACOS-LIMITATION.md)** - Why Docker has no GPU ([GitHub Discussion](https://github.com/apple/container/discussions/62))
+- **[PODMAN-GPU-OPTION.md](PODMAN-GPU-OPTION.md)** - Vulkan GPU solution (3-4x speedup)
+- **[APPLE-CONTAINER-SETUP.md](APPLE-CONTAINER-SETUP.md)** - macOS 26 native containers
+- **[APPLE-CONTAINER-TEST-RESULTS.md](APPLE-CONTAINER-TEST-RESULTS.md)** - Testing results on macOS 26.2
 
 ---
 
