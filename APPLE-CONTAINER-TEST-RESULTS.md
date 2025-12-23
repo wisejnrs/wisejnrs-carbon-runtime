@@ -205,6 +205,33 @@
 
 ---
 
-**Last Updated:** 2025-12-23
+---
+
+## 📚 **External References**
+
+### **Official Apple GitHub Discussions:**
+
+**GPU Passthrough Status:**
+- [GPU passthrough availability? - Discussion #62](https://github.com/apple/container/discussions/62)
+  - Community asking about GPU device passthrough
+  - No official GPU support confirmed
+
+- [GPU access from containers on Apple Silicon - Issue #46](https://github.com/apple/containerization/issues/46)
+  - Users requesting MPS/GPU access in containers
+  - Still open, no solution provided
+
+**Technical Analysis:**
+- [Why Docker Can't Use macOS GPUs - TechXplainator](https://techxplainator.com/docker-mac-gpu-guide/)
+  - Explains Virtualization.framework limitations
+  - No GPU/OpenGL 3.3+ exposed to Linux guests
+
+**Alternative Solutions:**
+- [Enabling containers to access GPU on macOS - Sergio López](https://sinrega.org/2024-03-06-enabling-containers-gpu-macos/)
+  - Podman + libkrun + Vulkan approach
+  - 3-4x performance improvement for compute workloads
+
+---
+
+**Last Updated:** 2025-12-24
 **Status:** Apple Container tested on macOS 26.2 beta
-**GPU Support:** Not available in current version (v0.7.1)
+**GPU Support:** Not available in v0.7.1 (confirmed by testing + GitHub discussions)
