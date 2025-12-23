@@ -1,6 +1,8 @@
 # 🚀 START HERE - Carbon macOS Edition
 
-**Welcome!** You're about to build a complete GPU-accelerated ML/AI development environment for your Mac.
+**Welcome!** You're about to build a complete ML/AI development environment for your Mac.
+
+⚠️ **Important:** Docker containers run Linux (not macOS), so MPS/Metal GPU acceleration is **not available**. See `DOCKER-MACOS-LIMITATION.md` for details. The images provide an excellent **CPU-based development environment**.
 
 ---
 

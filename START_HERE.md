@@ -57,8 +57,10 @@ Carbon now supports macOS with **Metal Performance Shaders (MPS)** for GPU-accel
 ./build-all-macos.sh
 
 # Expected: 40-65 minutes total
-# Result: GPU-accelerated ML/AI on Apple Silicon!
+# Result: Complete ML/AI development environment (CPU-based)
 ```
+
+⚠️ **Note:** Docker containers run Linux (not macOS), so MPS/Metal GPU is unavailable. See `DOCKER-MACOS-LIMITATION.md`. The images provide excellent **CPU-based development environments**.
 
 **NEW Users:** See `START-HERE-MACOS.md` for complete macOS guide
 
