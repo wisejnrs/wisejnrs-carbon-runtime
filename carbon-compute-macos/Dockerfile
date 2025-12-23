@@ -378,8 +378,12 @@ RUN set -uex; \
     echo "Installing llama-cpp-python (CPU-only for Intel Mac)..."; \
     pip install --no-cache-dir llama-cpp-python; \
     echo "llama-cpp-python installed (CPU-only)"; \
-  fi; \
-  install -d -m 0755 /var/log/llama && chown -R ${DEFAULT_UID}:${DEFAULT_UID} /var/log/llama
+  fi
+
+# Create log directory as root
+USER root
+RUN install -d -m 0755 /var/log/llama && chown -R ${DEFAULT_UID}:${DEFAULT_UID} /var/log/llama
+USER ${DEFAULT_UID}
 
 # 6) Data / cloud / notebooks / viz / NLP
 RUN set -uex \
