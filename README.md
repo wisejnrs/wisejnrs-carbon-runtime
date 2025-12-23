@@ -8,7 +8,26 @@
 
 A complete suite of Docker images providing GPU-accelerated development environments with full Cinnamon desktop, remote access via VNC/noVNC/xRDP, databases, and specialized tooling for data science, creative work, and security research.
 
+**Now supports both Linux (NVIDIA CUDA) and macOS (Docker/Podman)!**
+
 **Created by [WiseJNRS](https://www.wisejnrs.net)** - Building powerful development tools for the community.
+
+---
+
+## 🖥️ **Platform Support**
+
+| Platform | Base | Compute (ML/AI) | Tools (Creative/Security) | GPU |
+|----------|------|-----------------|---------------------------|-----|
+| **Linux** | carbon-base | carbon-compute | carbon-tools | NVIDIA CUDA ✅ |
+| **macOS** | carbon-base-macos | carbon-compute-macos | *(coming soon)* | CPU / Vulkan (Podman) |
+
+**Choose your platform:**
+- **Linux + NVIDIA GPU** → Production ML/AI training (fastest)
+- **macOS + Docker** → Development environment (CPU-based, easy setup)
+- **macOS + Podman** → Development + GPU inference (Vulkan, 3-4x speedup)
+
+📖 **macOS Users:** See [START-HERE-MACOS.md](START-HERE-MACOS.md) for complete guide!
+📖 **GPU Options:** See [DOCKER-MACOS-LIMITATION.md](DOCKER-MACOS-LIMITATION.md) and [PODMAN-GPU-OPTION.md](PODMAN-GPU-OPTION.md)
 
 ---
 
@@ -16,7 +35,9 @@ A complete suite of Docker images providing GPU-accelerated development environm
 
 > **👋 New to this project?** Read **[START_HERE.md](START_HERE.md)** first for current status and context!
 
-### Option A: Use Pre-Built Images from Docker Hub (Fastest!)
+### For Linux (NVIDIA GPU)
+
+#### Option A: Use Pre-Built Images from Docker Hub (Fastest!)
 
 **1. Pull images:**
 ```bash
@@ -138,6 +159,51 @@ ENABLE_POSTGRESQL=true ./start-carbon-configurable.sh
 ./start-carbon-compute.sh      # ML/AI stack
 ./start-carbon-tools.sh        # Creative/Security
 ```
+
+---
+
+### For macOS (Docker Desktop or Podman)
+
+#### Quick Start (Docker - CPU Development)
+
+```bash
+# Build both macOS images (one command!)
+./build-all-macos.sh
+
+# Or build individually
+./build-macos.sh --arm64          # Base (21 GB, ~2 hours)
+./build-compute-macos.sh --arm64  # Compute (33 GB, ~15 min with cache)
+
+# Start container
+docker run -d --name carbon-macos \
+  -p 6900:6900 -p 8888:8888 -p 9999:9999 \
+  -v ~/carbon-workspace:/work \
+  wisejnrs/carbon-compute-macos:latest
+```
+
+**Access:**
+- Desktop (noVNC): http://localhost:6900
+- Jupyter Lab: http://localhost:8888
+- VS Code: http://localhost:9999
+
+⚠️ **Note:** Docker on macOS runs CPU-only (no GPU). For GPU inference, use Podman (see below).
+
+#### Podman with GPU (3-4x Faster Inference)
+
+```bash
+# 1. Install Podman Desktop: https://podman-desktop.io
+# 2. Create machine with libkrun + GPU enabled (via GUI)
+# 3. Run with GPU device:
+
+podman run -d --name carbon-gpu \
+  --device /dev/dri \
+  -p 6900:6900 -p 8888:8888 \
+  wisejnrs/carbon-compute-macos:latest
+```
+
+📖 **Full Guide:** [PODMAN-GPU-OPTION.md](PODMAN-GPU-OPTION.md)
+
+---
 
 ### Access Your Environment
 
