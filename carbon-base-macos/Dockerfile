@@ -410,6 +410,7 @@ RUN set -eux; \
   chmod 775 /usr/local/bin; chmod 777 /var/run/dbus; \
   \
   # --- Swift toolchain (download + unpack) - Multi-arch support ---
+  # Download with retries and make optional (skip if fails)
   ARCH="$(dpkg --print-architecture)"; \
   if [ "$ARCH" = "amd64" ]; then \
     SWIFT_URL="https://download.swift.org/swift-6.1.2-release/ubuntu2204/swift-6.1.2-RELEASE/swift-6.1.2-RELEASE-ubuntu22.04.tar.gz"; \
@@ -422,10 +423,18 @@ RUN set -eux; \
     SWIFT_URL=""; \
   fi; \
   if [ -n "$SWIFT_URL" ]; then \
-    curl -fsSL "$SWIFT_URL" -o /tmp/swift.tar.gz; \
-    tar -xzf /tmp/swift.tar.gz -C /tmp; rm -f /tmp/swift.tar.gz; \
-    (cd "/tmp/$SWIFT_DIR" && find . | cpio -pdv /); \
-    rm -rf "/tmp/$SWIFT_DIR"; \
+    echo "Downloading Swift (this may take a while, ~500MB)..."; \
+    if curl -fL --retry 3 --retry-delay 5 --max-time 600 --connect-timeout 30 \
+        "$SWIFT_URL" -o /tmp/swift.tar.gz; then \
+      echo "Swift downloaded, extracting..."; \
+      tar -xzf /tmp/swift.tar.gz -C /tmp; rm -f /tmp/swift.tar.gz; \
+      (cd "/tmp/$SWIFT_DIR" && find . | cpio -pdv /); \
+      rm -rf "/tmp/$SWIFT_DIR"; \
+      echo "Swift installed successfully"; \
+    else \
+      echo "[WARN] Swift download failed after retries, skipping Swift installation"; \
+      rm -f /tmp/swift.tar.gz || true; \
+    fi; \
   fi; \
   \
   # --- (Best-effort) import Swift release keys; do not fail the build if unavailable ---
