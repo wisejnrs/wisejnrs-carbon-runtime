@@ -1,0 +1,18 @@
+{
+  // Enable format on save if you like; keep off by default
+  "formatOnSave": false,
+  "preferences": {
+    "python": {
+      "formatter": "black",
+      "black": {
+        "line_length": 100
+      },
+      "isort": {
+        "profile": "black"
+      }
+    },
+    "javascript": { "formatter": "prettier" },
+    "typescript": { "formatter": "prettier" },
+    "json": { "formatter": "prettier" }
+  }
+}

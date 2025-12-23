@@ -1,0 +1,610 @@
+# ===== MULTI-STAGE BUILD FOR SIZE OPTIMIZATION =====
+# ===== macOS-Optimized Variant - CPU with Software Rendering + MoltenVK =====
+
+# ===== BUILDER STAGE 1: Compile pgvector (PostgreSQL extension) =====
+FROM ubuntu:22.04 AS pgvector-builder
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates postgresql-server-dev-all \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --branch v0.5.0 https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && cd /tmp/pgvector \
+    && make \
+    && make install DESTDIR=/artifacts \
+    && cd / && rm -rf /tmp/pgvector
+
+# ===== BUILDER STAGE 2: Node.js packages with native modules =====
+FROM node:current-slim AS node-builder
+RUN npm i -g npm@latest \
+    && npm i -g typescript ts-node eslint prettier npm-check-updates nodemon pm2 http-server serve zx @anthropic-ai/claude-code \
+    && npm cache clean --force \
+    && (corepack enable && corepack prepare yarn@stable --activate && corepack prepare pnpm@latest --activate 2>/dev/null || true)
+
+# ===== Base image selection - Ubuntu 22.04 (No CUDA) =====
+# macOS-optimized: CPU-only with software rendering (llvmpipe/lavapipe)
+# Works on Docker Desktop for Mac (Intel & Apple Silicon)
+FROM ubuntu:22.04 AS base-system
+
+LABEL maintainer="Michael Wise <mike@WiseJNRS.net>" \
+      version="2.0.0-macos" \
+      description="Carbon Development Environment - macOS optimized with MoltenVK support"
+
+# ===== Build args =====
+ARG DEFAULT_USER="carbon"
+ARG DEFAULT_UID="1000"
+ARG DEFAULT_GID="100"
+ARG DEFAULT_PASSWORD="Carbon123#"
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTHON_VERSION=default
+ARG OLLAMA_VERSION=""
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+# ===== Environment =====
+ENV DOCKER_NAME="carbon-base-macos" \
+    SHELL="/bin/bash" \
+    TZ="Australia/Brisbane" \
+    LANG="en_US.UTF-8" \
+    LANGUAGE="en_US:en" \
+    LC_ALL="en_US.UTF-8" \
+    HOME="/home/${DEFAULT_USER}" \
+    DEFAULT_USER="${DEFAULT_USER}" \
+    DEFAULT_UID=${DEFAULT_UID} \
+    DEFAULT_GID=${DEFAULT_GID} \
+    DOTNET_INTERACTIVE_CLI_TELEMETRY_OPTOUT=1 \
+    APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 \
+    GCM_CREDENTIAL_STORE=plaintext \
+    ACCEPT_EULA=Y \
+    MYSQL_PASSWORD="${DEFAULT_PASSWORD}" \
+    MSSQL_SA_PASSWORD="${DEFAULT_PASSWORD}" \
+    POSTGRES_PASSWORD="${DEFAULT_PASSWORD}" \
+    CARBON_DB_NAME=carbon \
+    CARBON_DB_USER=carbon \
+    ORACLE_BASE=/opt/oracle \
+    ORACLE_HOME=/opt/oracle/instantclient_21_4 \
+    DISPLAY=":1" \
+    EDITOR="/usr/bin/vi" \
+    VISUAL="/usr/bin/vi" \
+    # ===== Software Rendering Configuration ===== \
+    # Force Mesa software rendering (llvmpipe for OpenGL, lavapipe for Vulkan) \
+    LIBGL_ALWAYS_SOFTWARE=1 \
+    GALLIUM_DRIVER=llvmpipe \
+    MESA_LOADER_DRIVER_OVERRIDE=llvmpipe \
+    # Vulkan software rendering (lavapipe) \
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json:/usr/share/vulkan/icd.d/lvp_icd.aarch64.json \
+    # MoltenVK paths (for future macOS Metal support) \
+    VK_LAYER_PATH=/opt/MoltenVK/MoltenVK/dylib/macOS \
+    VULKAN_SDK=/usr/local
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+USER root
+
+# ===== Copy local rootfs into container root =====
+COPY --chown=root:root rootfs/ /
+
+# Normalize CRLF and make our helper scripts executable (only our payload)
+RUN set -eux; \
+  # 1) /usr/local/bin: all *.sh we ship
+  find /usr/local/bin -maxdepth 1 -type f -name '*.sh' -print0 \
+    | xargs -0 -r sed -i 's/\r$//'; \
+  find /usr/local/bin -maxdepth 1 -type f -name '*.sh' -exec chmod 0755 {} +; \
+  \
+  # 2) helpers that aren't named *.sh
+  for f in /usr/local/bin/fix-permissions; do \
+    [ -f "$f" ] && sed -i 's/\r$//' "$f" && chmod 0755 "$f" || true; \
+  done; \
+  \
+  # 3) startup scripts at filesystem root
+  shopt -s nullglob; \
+  for f in /startup*.sh; do sed -i 's/\r$//' "$f"; chmod 0755 "$f"; done; \
+  shopt -u nullglob; \
+  \
+  # 4) optional: normalize bashrc (no chmod)
+  sed -i 's/\r$//' /etc/bash.bashrc || true
+
+# ===== System setup & packages =====
+RUN set -eux; \
+    chmod 755 /usr/local/bin/fix-permissions || true; \
+    # keep sticky bit on shared temp dirs
+    chmod 1777 /tmp /var/tmp; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends locales tzdata; \
+    ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime; dpkg-reconfigure -f noninteractive tzdata; \
+    locale-gen en_US.UTF-8; update-locale LANG=en_US.UTF-8; \
+    apt-get install -y --no-install-recommends \
+      apt-transport-https apt-utils ca-certificates software-properties-common gnupg2 \
+      curl wget git git-flow git-lfs supervisor tini \
+      bash-completion coreutils binutils cpio \
+      unzip zip xz-utils p7zip-full tar \
+      net-tools iputils-ping mtr tmux vnstat iproute2 \
+      xauth x11-utils mc lsb-release manpages-dev \
+      openssh-client openssh-server sudo vim nano \
+      glib2.0-bin libgtk-3-bin dconf-cli \
+      # Python / R
+      python3 python3-dev python3-pip python3-venv python3-distutils python3-gdbm python3-pil python-is-python3 \
+      r-base r-base-dev \
+      # Go / Java / Rust
+      golang-go openjdk-17-jdk rustc \
+      # DB / common libs (runtime only, no -dev packages)
+      libpq5 libsqlite3-0 libssl3 zlib1g libbz2-1.0 liblzma5 libffi8 \
+      # Graphics / OpenGL / X (runtime only) - Enhanced for software rendering
+      libgl1 libgl1-mesa-glx libgl1-mesa-dri libglu1-mesa libglvnd0 libglx0 \
+      libxext6 libxi6 libxv1 \
+      # Misc libs (runtime only)
+      libasound2 libaio1 libdrm2 libedit2 libexpat1 libnss3 libpcre2-8-0 libreadline8 \
+      libxml2 libxslt1.1 libunwind8 \
+      libcairo2 libpango-1.0-0 libjpeg8 libgif7 librsvg2-2 libvips42 \
+      # Media
+      ffmpeg sox mpg123 \
+      gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-libav \
+      gstreamer1.0-plugins-bad gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly \
+      gstreamer1.0-pulseaudio gstreamer1.0-tools gstreamer1.0-x \
+      imagemagick \
+      # Fonts
+      fontconfig fonts-firacode fonts-liberation fonts-noto fonts-noto-mono fonts-roboto fonts-ubuntu \
+      # Desktop + VNC + noVNC
+      cinnamon-core xterm \
+      tigervnc-standalone-server tigervnc-common tigervnc-tools xvfb \
+      novnc websockify xserver-xorg-video-dummy \
+      # Icons/themes
+      adwaita-icon-theme gnome-themes-extra gtk2-engines-murrine \
+      papirus-icon-theme numix-icon-theme numix-icon-theme-circle \
+      breeze-icon-theme elementary-icon-theme humanity-icon-theme \
+      yaru-theme-gtk yaru-theme-gnome-shell yaru-theme-icon \
+      hicolor-icon-theme \
+      # Session helpers
+      dbus-x11 alsa-utils zenity fonts-wqy-zenhei \
+      # ===== ENHANCED Mesa for Software Rendering ===== \
+      # Mesa with llvmpipe (software OpenGL) and lavapipe (software Vulkan)
+      mesa-utils mesa-utils-extra \
+      libegl1-mesa libgbm1 \
+      mesa-vulkan-drivers vulkan-tools \
+      llvm-14 llvm-14-runtime \
+      libvulkan1 libvulkan-dev \
+      # Storage & filesystems
+      s3fs \
+      # SMB/CIFS (Samba) clients
+      smbclient cifs-utils samba-common \
+      # FUSE base + clients
+      fuse3 sshfs rclone \
+      # XRDP
+      xrdp xorgxrdp \
+      # ===== Additional development tools =====
+      # Network tools
+      netcat-openbsd telnet nmap dnsutils whois socat \
+      # System monitoring (REMOVED: nvidia-settings, nvtop - not applicable for macOS)
+      htop iotop iftop \
+      # File management
+      tree rsync \
+      # Text processing / linting
+      yamllint \
+      # CLI productivity tools for mybash
+      zoxide fzf \
+    ; \
+    # Allow 'allow_other' on FUSE mounts (use with appropriate runtime caps)
+    sed -i 's/^#\?user_allow_other/user_allow_other/' /etc/fuse.conf || true; \
+    ln -sf /usr/bin/tini /bin/tini || true; \
+    mkdir -p /var/log/supervisor /run/supervisor; \
+    chown -R root:root /var/log/supervisor /run/supervisor; \
+    update-alternatives --install /usr/bin/vi vi /usr/bin/vim.basic 60; \
+    update-alternatives --set vi /usr/bin/vim.basic; \
+    update-alternatives --set editor /usr/bin/vim.basic; \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Fancy XTerm (fonts + defaults) from rootfs =====
+RUN /usr/local/bin/install-xterm-deluxe.sh
+
+# ===== Chris Titus mybash (Starship prompt, zoxide, fastfetch, aliases) =====
+RUN /usr/local/bin/install-mybash.sh
+
+# ===== Desktop Enhancement (themes, productivity, performance) =====
+RUN /usr/local/bin/enhance-desktop.sh
+
+# ===== macOS Big Sur Theme (WhiteSur icons, wallpapers) =====
+RUN /usr/local/bin/install-macos-theme.sh
+
+# ===== Premium macOS Theme (Enhanced with cursors, HD wallpapers) =====
+RUN /usr/local/bin/install-premium-macos-theme.sh
+
+# ===== Beautiful Window Decorations (macOS-style buttons) =====
+RUN /usr/local/bin/install-window-decorations.sh
+
+# ===== macOS-style Top Panel Layout =====
+RUN /usr/local/bin/configure-macos-panel.sh
+
+# ===== Orchidea Theme (Premium Cinnamon theme) =====
+RUN /usr/local/bin/install-orchidea-theme.sh
+
+# ===== SSH Configuration =====
+RUN /usr/local/bin/configure-ssh.sh
+
+# ===== xrdp Configuration =====
+RUN /usr/local/bin/configure-xrdp.sh
+
+# ===== Browsers (deb, not snap) =====
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg2; \
+  add-apt-repository -y ppa:mozillateam/ppa; \
+  add-apt-repository -y ppa:saiarcot895/chromium-dev; \
+  printf 'Package: firefox*\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001\n' > /etc/apt/preferences.d/mozillateamppa; \
+  apt-get update; \
+  apt-get purge -y firefox || true; \
+  apt-get install -y --no-install-recommends firefox chromium-browser chromium-codecs-ffmpeg-extra; \
+  for f in /usr/lib/chromium-browser/chrome-sandbox /usr/lib/chromium/chrome-sandbox /usr/lib/chromium/chrome_sandbox /usr/lib/chromium-browser/chrome_sandbox; do \
+    if [ -f "$f" ]; then chown root:root "$f"; chmod 4755 "$f"; dpkg-statoverride --update --add root root 4755 "$f" || true; fi; \
+  done; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Mint-Relaxed theme (rootfs script) =====
+RUN /usr/local/bin/install-mint-relaxed.sh
+
+# ===== Node.js (from builder stage - no compilation in runtime) =====
+# Copy pre-built Node.js and all global packages from node-builder
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin /usr/local/bin
+# Verify installations
+RUN set -eux; \
+  node -v; npm -v; npx -v; \
+  claude --version; \
+  (yarn --version || echo "yarn not available"); \
+  (pnpm --version || echo "pnpm not available"); \
+  echo "Node.js and all CLI tools successfully copied from builder stage"
+
+# ===== AWS CLI v2 (official installer) =====
+RUN set -eux; \
+  cd /tmp; \
+  ARCH="$(dpkg --print-architecture)"; \
+  if [ "$ARCH" = "arm64" ]; then \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
+  else \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; \
+  fi; \
+  unzip -q awscliv2.zip; \
+  ./aws/install; \
+  rm -rf aws awscliv2.zip; \
+  aws --version
+
+# ===== GitHub CLI (gh) =====
+RUN set -eux; \
+  install -d -m 0755 /usr/share/keyrings; \
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg; \
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg; \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends gh; \
+  mkdir -p /etc/bash_completion.d; \
+  gh completion -s bash > /etc/bash_completion.d/gh || true; \
+  gh --version; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== VirtualGL & TurboVNC =====
+# Note: VirtualGL works with software rendering (llvmpipe) for macOS compatibility
+RUN set -eux; \
+  wget -q -O- https://packagecloud.io/dcommander/virtualgl/gpgkey | gpg --dearmor >/etc/apt/trusted.gpg.d/VirtualGL.gpg; \
+  wget -q -O- https://packagecloud.io/dcommander/turbovnc/gpgkey | gpg --dearmor >/etc/apt/trusted.gpg.d/TurboVNC.gpg; \
+  wget -q https://raw.githubusercontent.com/VirtualGL/repo/main/VirtualGL.list; \
+  wget -q https://raw.githubusercontent.com/TurboVNC/repo/main/TurboVNC.list; \
+  mv TurboVNC.list /etc/apt/sources.list.d/TurboVNC.list; \
+  mv VirtualGL.list  /etc/apt/sources.list.d/VirtualGL.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends virtualgl turbovnc; \
+  /opt/VirtualGL/bin/vglserver_config -config +s +f -t || true; \
+  # Run enhanced VirtualGL configuration script
+    /usr/local/bin/configure-virtualgl.sh; \
+  # Add VirtualGL binaries to PATH
+  echo 'export PATH="/opt/VirtualGL/bin:$PATH"' >> /etc/environment; \
+  # Create VirtualGL configuration for container use with software rendering
+  mkdir -p /etc/opt/VirtualGL; \
+  echo "VGL_DISPLAY=:0" > /etc/opt/VirtualGL/vgl_xauth_key; \
+  chmod 644 /etc/opt/VirtualGL/vgl_xauth_key; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Vulkan SDK + MoltenVK =====
+# Install Vulkan SDK for comprehensive Vulkan support
+# MoltenVK provides Vulkan → Metal translation for future macOS GPU support
+RUN set -eux; \
+  echo "Installing Vulkan SDK and MoltenVK..."; \
+  # Install Vulkan SDK from LunarG
+  wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add - || true; \
+  wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+    https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list || true; \
+  apt-get update || true; \
+  apt-get install -y --no-install-recommends vulkan-sdk || \
+    echo "[WARN] Vulkan SDK repo unavailable, using system packages only"; \
+  # Install MoltenVK (Vulkan to Metal translation)
+  mkdir -p /opt/MoltenVK; \
+  cd /tmp; \
+  MOLTENVK_VERSION="1.2.10"; \
+  wget -q "https://github.com/KhronosGroup/MoltenVK/releases/download/v${MOLTENVK_VERSION}/MoltenVK-all.tar" -O moltenvk.tar || \
+    echo "[WARN] MoltenVK download failed, skipping"; \
+  if [ -f moltenvk.tar ]; then \
+    tar -xf moltenvk.tar -C /opt/MoltenVK || true; \
+    rm moltenvk.tar; \
+  fi; \
+  # Verify Vulkan installation
+  vulkaninfo --summary || echo "[INFO] vulkaninfo not available (expected on software rendering)"; \
+  # Configure Vulkan ICD for lavapipe (software Vulkan)
+  mkdir -p /usr/share/vulkan/icd.d /etc/vulkan/icd.d; \
+  # Create lavapipe ICD configuration if not exists
+  if [ ! -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then \
+    echo '{"ICD": {"api_version": "1.3.0", "library_path": "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so"}}' \
+      > /usr/share/vulkan/icd.d/lvp_icd.x86_64.json || true; \
+  fi; \
+  if [ ! -f /usr/share/vulkan/icd.d/lvp_icd.aarch64.json ]; then \
+    echo '{"ICD": {"api_version": "1.3.0", "library_path": "/usr/lib/aarch64-linux-gnu/libvulkan_lvp.so"}}' \
+      > /usr/share/vulkan/icd.d/lvp_icd.aarch64.json || true; \
+  fi; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*; \
+  echo "Vulkan SDK and MoltenVK installed (software rendering ready)"
+
+# ===== Google Chrome =====
+RUN set -eux; \
+  ARCH="$(dpkg --print-architecture)"; \
+  if [ "$ARCH" = "amd64" ]; then \
+    wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; \
+    dpkg -i google-chrome-stable_current_amd64.deb || apt-get -f install -y; \
+    rm -f google-chrome-stable_current_amd64.deb; \
+  else \
+    echo "[INFO] Chrome not available for $ARCH, skipping"; \
+  fi; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+  # ===== MongoDB repo + servers + pgvector + mosquitto runtime dirs =====
+RUN set -eux; \
+  ARCH="$(dpkg --print-architecture)"; \
+  curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg; \
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" > /etc/apt/sources.list.d/mongodb-org-7.0.list; \
+  apt-get update; \
+  # Install PostgreSQL with extensions, MySQL, Redis, Mosquitto, MongoDB (runtime only, no -dev)
+  apt-get install -y --no-install-recommends \
+    postgresql postgresql-contrib postgresql-client \
+    postgresql-14-postgis-3 postgresql-14-postgis-3-scripts postgis \
+    mysql-server mysql-client \
+    redis-server redis-tools \
+    mosquitto mosquitto-clients \
+    mongodb-org;  \
+  install -d -o mosquitto -g mosquitto /run/mosquitto /var/lib/mosquitto /var/log/mosquitto; \
+  if grep -q '^pid_file' /etc/mosquitto/mosquitto.conf; then \
+      sed -i 's|^pid_file .*|pid_file /run/mosquitto/mosquitto.pid|' /etc/mosquitto/mosquitto.conf; \
+    else \
+      printf '\npid_file /run/mosquitto/mosquitto.pid\n' >> /etc/mosquitto/mosquitto.conf; \
+  fi; \
+  if ! grep -q '^user[[:space:]]\+mosquitto' /etc/mosquitto/mosquitto.conf; then \
+      printf 'user mosquitto\n' >> /etc/mosquitto/mosquitto.conf; \
+  fi; \
+  echo "PostgreSQL, MySQL, Redis, MongoDB installed"; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Copy pgvector from builder (compiled separately) =====
+COPY --from=pgvector-builder /artifacts/usr/lib/postgresql/14/lib/ /usr/lib/postgresql/14/lib/
+COPY --from=pgvector-builder /artifacts/usr/share/postgresql/14/extension/ /usr/share/postgresql/14/extension/
+RUN echo "PostgreSQL extensions installed: pgvector (from builder), PostGIS"
+
+# ===== Qdrant Vector Database (optional service) =====
+RUN set -eux; \
+  QDRANT_VERSION="v1.12.5"; \
+  ARCH="$(dpkg --print-architecture)"; \
+  if [ "$ARCH" = "amd64" ]; then \
+    QDRANT_ARCH="x86_64-unknown-linux-musl"; \
+  elif [ "$ARCH" = "arm64" ]; then \
+    QDRANT_ARCH="aarch64-unknown-linux-musl"; \
+  else \
+    echo "[WARN] Qdrant not available for $ARCH"; \
+    exit 0; \
+  fi; \
+  wget -q "https://github.com/qdrant/qdrant/releases/download/${QDRANT_VERSION}/qdrant-${QDRANT_ARCH}.tar.gz" -O /tmp/qdrant.tar.gz || \
+    (echo "[WARN] Qdrant download failed for $QDRANT_ARCH, skipping" && exit 0); \
+  tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin/ || true; \
+  chmod +x /usr/local/bin/qdrant || true; \
+  rm -f /tmp/qdrant.tar.gz; \
+  mkdir -p /data/qdrant /var/log/qdrant; \
+  chown -R ${DEFAULT_UID}:${DEFAULT_UID} /data/qdrant /var/log/qdrant || true; \
+  echo "Qdrant ${QDRANT_VERSION} installed (or skipped if unavailable)"
+
+# ===== Swift, MS repos/CLI/SDKs, cleanup & hardening =====
+RUN set -eux; \
+  mkdir -p /usr/local/bin /var/run/dbus /etc/apt/keyrings; \
+  chmod 775 /usr/local/bin; chmod 777 /var/run/dbus; \
+  \
+  # --- Swift toolchain (download + unpack) - Multi-arch support ---
+  ARCH="$(dpkg --print-architecture)"; \
+  if [ "$ARCH" = "amd64" ]; then \
+    SWIFT_URL="https://download.swift.org/swift-6.1.2-release/ubuntu2204/swift-6.1.2-RELEASE/swift-6.1.2-RELEASE-ubuntu22.04.tar.gz"; \
+    SWIFT_DIR="swift-6.1.2-RELEASE-ubuntu22.04"; \
+  elif [ "$ARCH" = "arm64" ]; then \
+    SWIFT_URL="https://download.swift.org/swift-6.1.2-release/ubuntu2204-aarch64/swift-6.1.2-RELEASE/swift-6.1.2-RELEASE-ubuntu22.04-aarch64.tar.gz"; \
+    SWIFT_DIR="swift-6.1.2-RELEASE-ubuntu22.04-aarch64"; \
+  else \
+    echo "[WARN] Swift not available for $ARCH, skipping"; \
+    SWIFT_URL=""; \
+  fi; \
+  if [ -n "$SWIFT_URL" ]; then \
+    curl -fsSL "$SWIFT_URL" -o /tmp/swift.tar.gz; \
+    tar -xzf /tmp/swift.tar.gz -C /tmp; rm -f /tmp/swift.tar.gz; \
+    (cd "/tmp/$SWIFT_DIR" && find . | cpio -pdv /); \
+    rm -rf "/tmp/$SWIFT_DIR"; \
+  fi; \
+  \
+  # --- (Best-effort) import Swift release keys; do not fail the build if unavailable ---
+  export GNUPGHOME="$(mktemp -d)"; \
+  if curl -fsSL https://swift.org/keys/all-keys.asc -o /tmp/swift-keys.asc \
+     && grep -q "BEGIN PGP PUBLIC KEY BLOCK" /tmp/swift-keys.asc; then \
+       gpg --batch --import /tmp/swift-keys.asc || true; \
+     else \
+       echo "[warn] Swift keys fetch failed or not ASCII-armored; continuing without import"; \
+  fi; \
+  rm -rf "$GNUPGHOME" /tmp/swift-keys.asc || true; \
+  \
+  # --- Microsoft keyrings/repos ---
+  curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg || true; \
+  chmod go+r /etc/apt/keyrings/microsoft.gpg || true; \
+  curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list \
+    -o /etc/apt/sources.list.d/microsoft-prod.list; \
+  AZ_REPO="$(lsb_release -cs)"; \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" \
+    > /etc/apt/sources.list.d/azure-cli.list; \
+  \
+  # --- MS packages ---
+  curl -fsSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb; \
+  dpkg -i /tmp/packages-microsoft-prod.deb; rm -f /tmp/packages-microsoft-prod.deb; \
+  apt-get update -y; \
+  apt-get install -y --no-install-recommends powershell dotnet-sdk-9.0 azure-cli mssql-tools18 unixodbc-dev; \
+  echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' > /etc/profile.d/mssql-tools.sh; \
+  \
+  # --- locale & housekeeping ---
+  echo "en_US.UTF-8 UTF-8" > /etc/locale.gen; locale-gen en_US.UTF-8; \
+  chmod 777 /usr/local/bin/fix-permissions || true; chown root:root /usr/local/bin/fix-permissions || true; \
+  echo "auth requisite pam_deny.so" >> /etc/pam.d/su; \
+  sed -i.bak -e 's/^%admin/#%admin/' -e 's/^%sudo/#%sudo/' /etc/sudoers; \
+  git lfs install || true; \
+  apt-get update; apt-get -y upgrade; \
+  apt-get clean; rm -rf /tmp/* /var/tmp/* /var/cache/apt/archives/*deb /var/lib/apt/lists/*
+
+# ===== Visual Studio Code (Microsoft repo) =====
+RUN set -eux; \
+  install -d -m 0755 /etc/apt/keyrings; \
+  curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o /tmp/microsoft.asc; \
+  gpg --dearmor --batch --yes -o /etc/apt/keyrings/microsoft.gpg /tmp/microsoft.asc; \
+  chmod 0644 /etc/apt/keyrings/microsoft.gpg; \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" \
+    > /etc/apt/sources.list.d/vscode.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends code; \
+  rm -f /tmp/microsoft.asc; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Ollama (no systemd) - CPU-only for macOS =====
+# Works on CPU-only systems - perfect for Docker Desktop on Mac
+ARG OLLAMA_VERSION=""
+RUN set -eux; \
+  echo "Installing Ollama (CPU-only for macOS compatibility)..."; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64) O_ARCH="amd64" ;; \
+    arm64) O_ARCH="arm64" ;; \
+    *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
+  esac; \
+  if [ -n "$OLLAMA_VERSION" ]; then \
+    O_URL="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-${O_ARCH}.tgz"; \
+  else \
+    O_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-${O_ARCH}.tgz"; \
+  fi; \
+  curl -fL --retry 5 --retry-delay 3 "$O_URL" -o /tmp/ollama.tgz; \
+  tar -xzf /tmp/ollama.tgz -C /usr/local; \
+  rm -f /tmp/ollama.tgz; \
+  command -v ollama; \
+  ollama --version || true; \
+  install -d -m 0755 /var/lib/ollama /var/log/ollama; \
+  chown -R ${DEFAULT_UID}:${DEFAULT_UID} /var/lib/ollama /var/log/ollama; \
+  echo "Ollama installed (CPU-only, perfect for macOS)"
+
+# ===== User =====
+RUN set -eux; \
+  mkdir -p /etc/sudoers.d; \
+  id -u "${DEFAULT_USER}" >/dev/null 2>&1 || useradd -m -s /bin/bash -u "${DEFAULT_UID}" -U "${DEFAULT_USER}"; \
+  echo "${DEFAULT_USER}:${DEFAULT_PASSWORD}" | chpasswd; \
+  usermod -aG sudo "${DEFAULT_USER}"; \
+  printf '%%sudo ALL=(ALL) NOPASSWD:ALL\n' >/etc/sudoers.d/99-nopasswd; \
+  chmod 440 /etc/sudoers.d/99-nopasswd; \
+  mkdir -p /workspace; chown -R "${DEFAULT_USER}:${DEFAULT_USER}" /workspace; \
+  command -v fix-permissions >/dev/null 2>&1 && fix-permissions "/home/${DEFAULT_USER}" || true; \
+  chown -R "${DEFAULT_USER}:${DEFAULT_USER}" "/home/${DEFAULT_USER}"; chmod 755 "/home/${DEFAULT_USER}"
+
+# ===== App & config files =====
+COPY nuget.config /home/${DEFAULT_USER}/nuget.config
+RUN set -eux; \
+  chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/startup-vnc.sh; \
+  install -d -m 0777 /work; \
+  ln -s /work /home/${DEFAULT_USER}/work || true; \
+  mkdir -p "/home/${DEFAULT_USER}/.config"; \
+  chown -R ${DEFAULT_USER}:${DEFAULT_USER} "/home/${DEFAULT_USER}" "/home/${DEFAULT_USER}/.config"; \
+  mkdir -p /var/log/supervisor /run/supervisor; chown -R root:root /var/log/supervisor /run/supervisor
+
+# ===== Optional user-level extras =====
+USER ${DEFAULT_USER}
+WORKDIR /workspace
+ENV PATH=${PATH}:${HOME}/.dotnet:${HOME}/.dotnet/tools:${ORACLE_HOME}:${ORACLE_BASE}/sqldeveloper:${HOME}/.local/bin
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${ORACLE_HOME}
+
+RUN set -eux; \
+  git clone https://github.com/addy-dclxvi/openbox-theme-collections ~/.themes; \
+  openssl req -x509 -nodes -newkey rsa:2048 -keyout ~/novnc.pem -out ~/novnc.pem -days 3650 \
+    -subj "/C=US/ST=NY/L=NY/O=NY/OU=NY/CN=NY emailAddress=email@example.com"
+
+# ===== Switch back to root for supervisor =====
+USER root
+
+# ===== Let Supervisor also read configs from /work/supervisor.d =====
+RUN set -eux; \
+  install -d -m 0777 /work; \
+  install -d -m 0775 /work/supervisor.d; \
+  chown ${DEFAULT_UID}:${DEFAULT_UID} /work/supervisor.d; \
+  if [ -f /etc/supervisor/supervisord.conf ]; then \
+    if grep -q '^\[include\]' /etc/supervisor/supervisord.conf; then \
+      sed -i 's|^files *=.*|files = /etc/supervisor/conf.d/*.conf /work/supervisor.d/*.conf|' \
+        /etc/supervisor/supervisord.conf; \
+    else \
+      printf '\n[include]\nfiles = /etc/supervisor/conf.d/*.conf /work/supervisor.d/*.conf\n' \
+        >> /etc/supervisor/supervisord.conf; \
+    fi; \
+  else \
+    printf '%s\n' \
+      '[supervisord]' 'nodaemon=true' \
+      '' \
+      '[rpcinterface:supervisor]' 'supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface' \
+      '' \
+      '[supervisorctl]' \
+      '' \
+      '[include]' 'files = /etc/supervisor/conf.d/*.conf /work/supervisor.d/*.conf' \
+      > /etc/supervisor/supervisord.conf; \
+  fi
+
+# Ports
+EXPOSE 2222 3306 3389 3390 5900 5901 6080 6900 5432 6379 6333 6334 8080 8081 1883 8883 7077 6066 5567 4040 9999 8020 8030 8040 3000 11434 8001 8002 8003
+
+# ===== Configure databases to use /data volume for persistence =====
+RUN set -eux; \
+  install -d -m 0777 /data; \
+  /usr/local/bin/configure-databases.sh
+
+# ===== Aggressive cleanup to reduce image size =====
+RUN set -eux; \
+  echo "Starting aggressive cleanup to reduce image size..."; \
+  # Remove documentation (saves ~500MB)
+  find /usr/share/doc -depth -type f ! -name copyright -delete || true; \
+  find /usr/share/doc -type d -empty -delete || true; \
+  # Remove man pages (saves ~200MB)
+  find /usr/share/man -depth -type f -delete || true; \
+  find /usr/share/man -type d -empty -delete || true; \
+  # Keep only English locales (saves ~300MB)
+  find /usr/share/locale -mindepth 1 -maxdepth 1 ! -name 'en*' -exec rm -rf {} + || true; \
+  # Remove Python cache
+  find /usr -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; \
+  find /opt -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; \
+  find /home -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; \
+  # Remove pip cache
+  rm -rf /root/.cache/pip /home/*/.cache/pip || true; \
+  # Remove npm cache (already cleaned but double-check)
+  npm cache clean --force 2>/dev/null || true; \
+  rm -rf /root/.npm /home/*/.npm/_cacache || true; \
+  # Remove apt cache and temp files
+  apt-get clean; \
+  rm -rf /var/lib/apt/lists/*; \
+  rm -rf /tmp/* /var/tmp/*; \
+  # Remove conda package cache if it exists
+  rm -rf /opt/conda/pkgs/* 2>/dev/null || true; \
+  # Remove git cache and temp files
+  rm -rf /root/.cache /home/*/.cache || true; \
+  # Remove build logs
+  rm -rf /var/log/*.log /var/log/*/*.log 2>/dev/null || true; \
+  echo "Cleanup complete! Image optimized for macOS deployment"
+
+# ===== Final stage =====
+FROM base-system AS carbon-base-macos
+
+# Final entrypoint (root → tini → supervisord)
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

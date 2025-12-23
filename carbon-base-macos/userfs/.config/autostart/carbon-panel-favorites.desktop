@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Carbon Panel Favorites
+Comment=Set panel favorite applications
+Exec=bash /home/carbon/.config/cinnamon/set-favorites.sh
+Icon=preferences-desktop
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true

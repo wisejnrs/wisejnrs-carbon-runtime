@@ -1,0 +1,2 @@
+! ~/.Xresources (seeded by /etc/skel)
+#include "/etc/X11/app-defaults/XTerm"
