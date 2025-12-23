@@ -455,12 +455,19 @@ RUN set -ux; \
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" \
     > /etc/apt/sources.list.d/azure-cli.list; \
   \
-  # --- MS packages ---
+  # --- MS packages (architecture-aware) ---
   curl -fsSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb; \
   dpkg -i /tmp/packages-microsoft-prod.deb; rm -f /tmp/packages-microsoft-prod.deb; \
   apt-get update -y; \
-  apt-get install -y --no-install-recommends powershell dotnet-sdk-9.0 azure-cli mssql-tools18 unixodbc-dev; \
-  echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' > /etc/profile.d/mssql-tools.sh; \
+  # PowerShell and .NET SDK 9.0 not available for ARM64, Azure CLI and mssql-tools available
+  if [ "$ARCH" = "arm64" ]; then \
+    echo "[INFO] Installing ARM64-compatible Microsoft packages..."; \
+    apt-get install -y --no-install-recommends azure-cli unixodbc-dev || echo "[WARN] Some MS packages unavailable for ARM64"; \
+    echo "[INFO] PowerShell and .NET SDK not available for Linux ARM64 (skipped)"; \
+  else \
+    apt-get install -y --no-install-recommends powershell dotnet-sdk-9.0 azure-cli mssql-tools18 unixodbc-dev; \
+    echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' > /etc/profile.d/mssql-tools.sh; \
+  fi; \
   \
   # --- locale & housekeeping ---
   echo "en_US.UTF-8 UTF-8" > /etc/locale.gen; locale-gen en_US.UTF-8; \
