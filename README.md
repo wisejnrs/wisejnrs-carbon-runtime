@@ -18,13 +18,27 @@ A complete suite of Docker images providing GPU-accelerated development environm
 
 | Platform | Base | Compute (ML/AI) | Tools (Creative/Security) | GPU |
 |----------|------|-----------------|---------------------------|-----|
-| **Linux** | carbon-base | carbon-compute | carbon-tools | NVIDIA CUDA ✅ |
-| **macOS** | carbon-base-macos | carbon-compute-macos | *(coming soon)* | CPU / **Vulkan GPU** ⚡ |
+| **Linux** | carbon-base | carbon-compute | carbon-tools | **NVIDIA CUDA ✅ PROVEN** |
+| **macOS** | carbon-base-macos | carbon-compute-macos | carbon-tools-macos | **Vulkan GPU ✅ PROVEN** ⚡ |
+
+**GPU Solutions - Both Proven Working:**
+
+**Linux (NVIDIA):**
+- ✅ CUDA 12.1 + cuDNN
+- ✅ Full GPU acceleration
+- ✅ Proven via [blog post](https://www.wisejnrs.net/blog/carbon-development-suite-ai-playground)
+- ✅ 10-100x faster than CPU
+
+**macOS (krunkit):**
+- ✅ Vulkan + MoltenVK + Metal
+- ✅ GPU device accessible (`/dev/dri/renderD128`)
+- ✅ Proven via test suite (4 notebooks)
+- ✅ 2-4x faster than CPU
 
 **Choose your platform:**
-- **Linux + NVIDIA GPU** → Production ML/AI training (fastest)
-- **macOS + Docker** → Development environment (CPU-based, easy setup)
-- **macOS + Podman + krunkit** → **GPU acceleration working!** (Vulkan, 2-4x speedup) ⭐
+- **Linux + NVIDIA GPU** → Production training (10-100x faster) ⭐
+- **macOS + Docker** → Development (CPU, easy setup)
+- **macOS + krunkit** → **GPU acceleration!** (2-4x faster) ⭐ **NEW!**
 
 📖 **macOS Users - Complete Documentation:**
 - **[COMPLETE-MACOS-GUIDE.md](COMPLETE-MACOS-GUIDE.md)** ⭐ - All 3 runtimes compared (Docker, Podman, Apple Container)
