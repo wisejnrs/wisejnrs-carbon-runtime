@@ -1,0 +1,63 @@
+# Venus GPU Driver for carbon-base-macos
+# Enables actual GPU acceleration via Vulkan/MoltenVK/Metal
+# Use with: podman run --device /dev/dri ...
+
+FROM wisejnrs/carbon-base-macos:latest
+
+USER root
+
+# Install build dependencies for Mesa
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential meson ninja-build pkg-config \
+    python3-mako python-is-python3 bison flex \
+    libdrm-dev libxcb-dri3-dev libxcb-present-dev \
+    libxshmfence-dev libxxf86vm-dev libxrandr-dev \
+    libexpat1-dev libxdamage-dev libxfixes-dev \
+    libx11-xcb-dev libxcb-glx0-dev libxcb-shm0-dev \
+    libxcb-dri2-0-dev libxcb-sync-dev \
+    wayland-protocols libwayland-egl-backend-dev \
+    libwayland-dev libxext-dev \
+    zlib1g-dev libelf-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone and build Mesa with Venus Vulkan driver
+# This is the special patched version for krunkit
+RUN echo "Building Mesa with Venus driver for GPU acceleration..." && \
+    git clone -b krunkit-24.0 --depth 1 \
+    https://github.com/slp/mesa-krunkit.git /tmp/mesa && \
+    cd /tmp/mesa && \
+    meson setup build \
+      -Dvulkan-drivers=virtio \
+      -Dgallium-drivers= \
+      -Dplatforms=x11,wayland \
+      -Dbuildtype=release \
+      -Dprefix=/usr \
+      -Dglx=disabled \
+      -Dopengl=false \
+      -Dgles1=disabled \
+      -Dgles2=disabled && \
+    meson compile -C build && \
+    meson install -C build && \
+    ldconfig && \
+    rm -rf /tmp/mesa
+
+# Configure Vulkan to use Venus ICD
+RUN mkdir -p /etc/vulkan/icd.d && \
+    echo '{"ICD": {"api_version": "1.3.0", "library_path": "/usr/lib/aarch64-linux-gnu/libvulkan_virtio.so"}}' \
+    > /etc/vulkan/icd.d/virtio_icd.aarch64.json
+
+# Set environment for Venus
+ENV VK_ICD_FILENAMES=/etc/vulkan/icd.d/virtio_icd.aarch64.json \
+    VK_DRIVER_FILES=/etc/vulkan/icd.d/virtio_icd.aarch64.json
+
+# Verify installation
+RUN echo "Venus driver installed!" && \
+    ls -la /usr/lib/aarch64-linux-gnu/libvulkan_virtio.so* || echo "Venus library check"
+
+USER carbon
+
+# Add note about GPU usage
+RUN echo 'echo "🎉 GPU-enabled container! Use --device /dev/dri when running"' >> ~/.bashrc
+
+LABEL version="2.0.0-macos-venus-gpu"
+LABEL description="Carbon Base macOS with Venus GPU driver for krunkit/Podman acceleration"

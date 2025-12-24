@@ -1,0 +1,49 @@
+# Venus GPU-Enabled Container for krunkit
+# Uses Fedora with pre-built Venus drivers from Copr
+# Run with: podman run --device /dev/dri ...
+
+FROM fedora:39
+
+LABEL maintainer="Michael Wise <mike@wisejnrs.net>"
+LABEL description="GPU-enabled container with Venus Vulkan driver for krunkit/Podman on macOS"
+
+# Install system packages and enable Copr repo with Venus drivers
+RUN dnf install -y \
+    dnf-plugins-core \
+    python3 python3-pip \
+    vim nano git curl wget \
+    && dnf copr enable -y slp/mesa-krunkit epel-9-aarch64 \
+    && dnf install -y \
+    mesa-vulkan-drivers \
+    vulkan-loader \
+    vulkan-tools \
+    && dnf clean all
+
+# Install Python ML libraries
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio \
+    numpy pandas scipy \
+    jupyter jupyterlab \
+    matplotlib seaborn
+
+# Create user
+RUN useradd -m -s /bin/bash carbon && \
+    echo "carbon:Carbon123#" | chpasswd
+
+# Set Vulkan ICD to use Venus
+ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/virtio_icd.aarch64.json \
+    VK_DRIVER_FILES=/usr/share/vulkan/icd.d/virtio_icd.aarch64.json
+
+USER carbon
+WORKDIR /home/carbon
+
+# Test GPU on startup
+RUN echo '#!/bin/bash' > /home/carbon/test-gpu.sh && \
+    echo 'echo "=== GPU Device Status ==="' >> /home/carbon/test-gpu.sh && \
+    echo 'ls -la /dev/dri 2>/dev/null || echo "No GPU device"' >> /home/carbon/test-gpu.sh && \
+    echo 'echo ""' >> /home/carbon/test-gpu.sh && \
+    echo 'echo "=== Vulkan Info ==="' >> /home/carbon/test-gpu.sh && \
+    echo 'vulkaninfo --summary 2>&1 | head -30' >> /home/carbon/test-gpu.sh && \
+    chmod +x /home/carbon/test-gpu.sh
+
+CMD ["/bin/bash"]
