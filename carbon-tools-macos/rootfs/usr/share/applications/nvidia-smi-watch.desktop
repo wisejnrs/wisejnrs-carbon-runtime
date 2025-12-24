@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GPU Status Monitor
+Comment=Watch nvidia-smi output in real-time
+Icon=utilities-system-monitor
+Exec=tilix -e watch -n 1 nvidia-smi
+Terminal=false
+Categories=System;Monitor;
+Keywords=nvidia;gpu;monitor;smi;
