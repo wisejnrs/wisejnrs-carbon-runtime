@@ -1,0 +1,65 @@
+# Venus GPU Container - RHEL 9 Base
+# Uses RHEL 9 for Copr mesa-krunkit packages
+# Run with: podman run --device /dev/dri ...
+
+FROM quay.io/centos/centos:stream9
+
+LABEL maintainer="Michael Wise <mike@wisejnrs.net>"
+LABEL description="GPU-enabled ML container with Venus Vulkan driver for krunkit"
+
+# Install EPEL and enable Copr repo with Venus drivers
+RUN dnf install -y epel-release && \
+    dnf install -y 'dnf-command(copr)' && \
+    dnf copr enable -y slp/mesa-krunkit epel-9-aarch64 && \
+    dnf install -y \
+    mesa-vulkan-drivers \
+    vulkan-loader \
+    vulkan-tools \
+    python3 python3-pip \
+    git vim nano wget && \
+    dnf clean all
+
+# Install Python ML libraries
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio \
+    numpy pandas scipy matplotlib seaborn \
+    jupyter jupyterlab \
+    ipywidgets
+
+# Create carbon user
+RUN useradd -m -s /bin/bash carbon && \
+    echo "carbon:Carbon123#" | chpasswd
+
+# Configure Vulkan ICD for Venus
+RUN mkdir -p /etc/vulkan/icd.d
+
+USER carbon
+WORKDIR /home/carbon
+
+# Create GPU test script
+RUN cat > /home/carbon/test-gpu.sh << 'EOF'
+#!/bin/bash
+echo "=========================================="
+echo "  Carbon krunkit GPU Test"
+echo "=========================================="
+echo ""
+echo "GPU Device:"
+ls -la /dev/dri || echo "No GPU device found"
+echo ""
+echo "Vulkan Info:"
+vulkaninfo --summary 2>&1 | head -40
+echo ""
+echo "Python + PyTorch:"
+python3 << 'PYTHON'
+import torch
+print(f"PyTorch: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+print("Ready for GPU compute!")
+PYTHON
+echo ""
+echo "=========================================="
+EOF
+RUN chmod +x /home/carbon/test-gpu.sh
+
+# Start Jupyter by default
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
