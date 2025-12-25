@@ -173,8 +173,12 @@ RUN chown -R ${DEFAULT_UID}:${DEFAULT_UID} /home/${DEFAULT_USER}
 USER ${DEFAULT_UID}
 
 # ---------- code-server + extensions ----------
+# Install code-server as root, then configure as user
+USER root
 RUN set -uex \
-    && curl -fsSL https://code-server.dev/install.sh | sh \
+    && curl -fsSL https://code-server.dev/install.sh | sh
+USER ${DEFAULT_UID}
+RUN set -uex \
     && mkdir -p "$HOME/.config/code-server" "$HOME/.local/share/code-server/extensions" \
     && printf "bind-addr: 0.0.0.0:9999\nauth: password\ncert: false\n" > "$HOME/.config/code-server/config.yaml" \
     \
