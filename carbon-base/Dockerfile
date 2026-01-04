@@ -158,7 +158,7 @@ RUN set -eux; \
       # System monitoring
       htop iotop iftop nvidia-settings nvtop \
       # File management
-      tree rsync \
+      tree rsync trash-cli \
       # Text processing / linting
       yamllint \
       # CLI productivity tools for mybash
