@@ -398,6 +398,7 @@ RUN set -uex \
     && rm -rf /tmp/* /var/tmp/*
 
 # Ensure log dirs are present & writable
+USER root
 RUN set -eux; \
   mkdir -p /var/log/jupyter /var/log/code-server /var/log/rag-api; \
   chmod -R 0755 /var/log/jupyter /var/log/code-server /var/log/rag-api || true; \
