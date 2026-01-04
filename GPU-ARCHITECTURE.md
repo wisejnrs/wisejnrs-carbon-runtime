@@ -4,6 +4,18 @@
 
 As of version 2.0, **all Carbon images are GPU-enabled by default** with automatic CPU fallback support. This simplifies the architecture while maintaining compatibility with both GPU and CPU-only systems.
 
+### Multi-Platform GPU Support
+
+Carbon now supports three GPU platforms:
+
+| Platform | Images | GPU Runtime | Use Case |
+|----------|--------|-------------|----------|
+| **NVIDIA** | carbon-base, carbon-compute, carbon-tools | CUDA 12.1 | Linux with NVIDIA GPU |
+| **Intel Arc** | carbon-base-arc, carbon-compute-arc, carbon-tools-arc | oneAPI 2025.1 | Linux with Intel Arc GPU |
+| **macOS** | carbon-base-macos, carbon-compute-macos, carbon-tools-macos | krunkit/Vulkan/MPS | macOS (Intel/Apple Silicon) |
+
+See [INTEL-ARC.md](INTEL-ARC.md) for Intel Arc specific documentation.
+
 ---
 
 ## Why GPU-Only?
