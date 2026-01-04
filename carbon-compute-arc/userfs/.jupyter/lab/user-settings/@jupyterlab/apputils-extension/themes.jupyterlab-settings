@@ -1,0 +1,5 @@
+{
+  // JupyterLab appearance
+  "theme": "JupyterLab Dark",
+  "theme-scrollbars": true
+}

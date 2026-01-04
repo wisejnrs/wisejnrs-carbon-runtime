@@ -1,0 +1,16 @@
+#!/bin/bash
+# VS Code wrapper for VNC/remote sessions (optimized for faster startup)
+# Launches VS Code with proper flags for containerized VNC environment
+
+exec /usr/bin/code \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --skip-getting-started \
+  --skip-release-notes \
+  --disable-workspace-trust \
+  --disable-updates \
+  --disable-crash-reporter \
+  --disable-telemetry \
+  --user-data-dir="${HOME}/.vscode" \
+  "$@"

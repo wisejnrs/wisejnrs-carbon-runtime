@@ -9,9 +9,20 @@ The Carbon image suite provides three specialized development containers with fu
 ## 🏗️ Architecture
 
 ```
-carbon-base (foundation)
-    ├── carbon-compute (ML/AI/Data Science)
-    └── carbon-tools (Creative/Security/DevOps)
+Linux (NVIDIA CUDA):
+  carbon-base (foundation)
+      ├── carbon-compute (ML/AI/Data Science)
+      └── carbon-tools (Creative/Security/DevOps)
+
+Linux (Intel Arc):
+  carbon-base-arc (foundation)
+      ├── carbon-compute-arc (ML/AI with XPU)
+      └── carbon-tools-arc (Creative/Security/DevOps)
+
+macOS:
+  carbon-base-macos (foundation)
+      ├── carbon-compute-macos (ML/AI with MPS)
+      └── carbon-tools-macos (Creative/Security/DevOps)
 ```
 
 All images inherit from `carbon-base` and include:
@@ -239,6 +250,53 @@ docker build \
 - Retro game development (C64, NES, SNES)
 - DevOps automation and infrastructure work
 - Graphic design and digital art
+
+---
+
+### 4. Intel Arc Variants (carbon-*-arc)
+
+**Purpose**: Same functionality as NVIDIA variants but optimized for Intel Arc GPUs
+
+**GPU Support:**
+- Intel Arc A-series (A770, A750, A380)
+- Intel Arc B-series (B580)
+- Intel Core Ultra with Arc Graphics
+- Intel Data Center GPU Max/Flex Series
+
+**Key Differences from NVIDIA:**
+| Aspect | NVIDIA | Intel Arc |
+|--------|--------|-----------|
+| Base Image | `nvidia/cuda:12.1` | `intel/oneapi-basekit:2025` |
+| Runtime | CUDA 12.1 | oneAPI 2025.1, Level Zero |
+| PyTorch Device | `cuda` | `xpu` |
+| Docker Flag | `--gpus all` | `--device=/dev/dri` |
+| Monitor | `nvidia-smi` | `xpu-smi`, `sycl-ls` |
+
+**Build:**
+```bash
+# Build all Arc variants
+./build-all-arc.sh
+
+# Build specific image
+docker build -t wisejnrs/carbon-base-arc:latest carbon-base-arc/
+docker build -t wisejnrs/carbon-compute-arc:latest carbon-compute-arc/
+```
+
+**Start:**
+```bash
+# With Intel Arc GPU
+docker run -d --device=/dev/dri \
+  -p 6900:6900 -p 3389:3389 \
+  wisejnrs/carbon-base-arc:latest
+
+# For profiling tools
+docker run -d --device=/dev/dri \
+  --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE \
+  -p 6900:6900 \
+  wisejnrs/carbon-compute-arc:latest
+```
+
+**Documentation:** See [INTEL-ARC.md](INTEL-ARC.md) for complete setup guide.
 
 ---
 

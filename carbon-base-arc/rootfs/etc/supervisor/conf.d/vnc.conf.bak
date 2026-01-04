@@ -1,0 +1,9 @@
+[program:dbus]
+command=/usr/bin/dbus-daemon --system --nofork
+autorestart=true
+priority=10
+stdout_logfile=/var/log/dbus.out.log
+stderr_logfile=/var/log/dbus.err.log
+stopsignal=TERM
+stopasgroup=true
+killasgroup=true

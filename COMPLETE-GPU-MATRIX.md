@@ -1,20 +1,49 @@
 # Complete GPU Solution Matrix - All Carbon Images
 
-**Status:** All Carbon macOS images work with krunkit GPU!
-**Date:** December 24, 2025
+**Status:** Full GPU support across NVIDIA, Intel Arc, and macOS!
+**Date:** January 4, 2026
 
 ---
 
 ## 📊 **Complete Solution Matrix**
 
-| Image | Size | Services | GPU Support | When to Use |
-|-------|------|----------|-------------|-------------|
-| **carbon-base-macos** | 21 GB | Desktop, VNC, SSH, all dev tools | ✅ krunkit | Development, all languages |
-| **carbon-compute-macos** | 33 GB | Base + Jupyter, Spark, ML/AI | ✅ krunkit | ML/AI workstation |
-| **carbon-tools-macos** | TBD | Base + Creative, Security | ✅ krunkit | Creative work, pentesting |
-| **carbon-krunkit-gpu** | 4 GB | Jupyter, Python, minimal | ✅ Optimized | Lightweight ML |
+### Linux - NVIDIA CUDA
 
-**ALL work with krunkit GPU - just add `--device /dev/dri`!**
+| Image | Size | GPU Runtime | Docker Flag | When to Use |
+|-------|------|-------------|-------------|-------------|
+| **carbon-base** | 18 GB | CUDA 12.1 | `--gpus all` | Development, all languages |
+| **carbon-compute** | 56 GB | CUDA 12.1 | `--gpus all` | ML/AI workstation |
+| **carbon-tools** | 28 GB | CUDA 12.1 | `--gpus all` | Creative work, pentesting |
+
+### Linux - Intel Arc
+
+| Image | Size | GPU Runtime | Docker Flag | When to Use |
+|-------|------|-------------|-------------|-------------|
+| **carbon-base-arc** | ~20 GB | oneAPI 2025.1 | `--device=/dev/dri` | Development, all languages |
+| **carbon-compute-arc** | ~50 GB | oneAPI 2025.1 | `--device=/dev/dri` | ML/AI with XPU |
+| **carbon-tools-arc** | ~30 GB | oneAPI 2025.1 | `--device=/dev/dri` | Creative work, pentesting |
+
+### macOS
+
+| Image | Size | GPU Runtime | Docker Flag | When to Use |
+|-------|------|-------------|-------------|-------------|
+| **carbon-base-macos** | 21 GB | krunkit/Vulkan | `--device /dev/dri` | Development, all languages |
+| **carbon-compute-macos** | 33 GB | krunkit/MPS | `--device /dev/dri` | ML/AI workstation |
+| **carbon-tools-macos** | TBD | krunkit/Vulkan | `--device /dev/dri` | Creative work, pentesting |
+| **carbon-krunkit-gpu** | 4 GB | Venus optimized | `--device /dev/dri` | Lightweight ML |
+
+---
+
+## 🎯 **GPU Platform Comparison**
+
+| Feature | NVIDIA CUDA | Intel Arc | macOS krunkit |
+|---------|-------------|-----------|---------------|
+| PyTorch Device | `cuda` | `xpu` | `mps` or CPU |
+| TensorFlow | CUDA | Intel Extension | Metal or CPU |
+| Monitor Tool | `nvidia-smi` | `xpu-smi` | N/A |
+| Ollama | GPU accelerated | CPU (GPU coming) | CPU |
+| Blender | CUDA/OptiX | oneAPI | CPU render |
+| Performance | Fastest | Good | Moderate |
 
 ---
 
