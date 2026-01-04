@@ -399,8 +399,9 @@ RUN set -uex \
 
 # Ensure log dirs are present & writable
 RUN set -eux; \
-  install -d -m 0755 /var/log/jupyter /var/log/code-server /var/log/rag-api; \
-  chown -R carbon:carbon /var/log/jupyter /var/log/code-server /var/log/rag-api
+  mkdir -p /var/log/jupyter /var/log/code-server /var/log/rag-api; \
+  chmod -R 0755 /var/log/jupyter /var/log/code-server /var/log/rag-api || true; \
+  chown -R carbon:carbon /var/log/jupyter /var/log/code-server /var/log/rag-api || true
 
 # ===== Cleanup to reduce image size =====
 RUN set -eux; \
