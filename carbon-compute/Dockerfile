@@ -393,8 +393,8 @@ RUN set -uex \
 RUN set -uex \
     && chown -R root:root /etc/supervisor/conf.d || true \
     && mkdir -p /var/log/supervisor /run/supervisor \
-    && chown -R root:root /var/log/supervisor /run/supervisor \
-    && chmod 755 /var/log/supervisor /run/supervisor \
+    && chown -R root:root /var/log/supervisor /run/supervisor || true \
+    && chmod 755 /var/log/supervisor /run/supervisor || true \
     && rm -rf /tmp/* /var/tmp/*
 
 # Ensure log dirs are present & writable
