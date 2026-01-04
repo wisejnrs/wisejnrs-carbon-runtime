@@ -106,16 +106,6 @@ else
 fi
 
 # ============================================
-# VLLM (GPU only)
-# ============================================
-
-if [ "${ENABLE_VLLM:-false}" = "true" ]; then
-    enable_service "vllm"
-else
-    disable_service "vllm"
-fi
-
-# ============================================
 # JUPYTER (compute image only)
 # ============================================
 
@@ -148,6 +138,26 @@ else
 fi
 
 # ============================================
+# RAG API (compute image only)
+# ============================================
+
+if [ "${ENABLE_RAG_API:-false}" = "true" ]; then
+    enable_service "rag-api"
+else
+    disable_service "rag-api"
+fi
+
+# ============================================
+# VLLM (compute image only)
+# ============================================
+
+if [ "${ENABLE_VLLM:-false}" = "true" ]; then
+    enable_service "vllm"
+else
+    disable_service "vllm"
+fi
+
+# ============================================
 # VNC
 # ============================================
 
@@ -168,5 +178,40 @@ else
     enable_service "xrdp"
     enable_service "xrdp-sesman"
 fi
+
+# ============================================
+# CLAUDE CODE CONFIG PERSISTENCE
+# ============================================
+
+echo "Setting up Claude Code config persistence..."
+
+# Create persistent directory for Claude Code config
+mkdir -p /data/claude-config
+chown -R ${DEFAULT_USER:-carbon}:${DEFAULT_USER:-carbon} /data/claude-config
+
+# Set up symlink for each user home directory that exists
+for user_home in /home/*; do
+    if [ -d "$user_home" ]; then
+        user_name=$(basename "$user_home")
+        claude_config="$user_home/.config/Claude Code"
+
+        # Create .config if it doesn't exist
+        mkdir -p "$user_home/.config"
+        chown "$user_name:$user_name" "$user_home/.config" 2>/dev/null || true
+
+        # If Claude Code config exists and is not a symlink, move it to /data
+        if [ -d "$claude_config" ] && [ ! -L "$claude_config" ]; then
+            echo "  Moving existing Claude Code config for $user_name to /data..."
+            cp -a "$claude_config" /data/claude-config/ 2>/dev/null || true
+            rm -rf "$claude_config"
+        fi
+
+        # Create symlink if it doesn't exist
+        if [ ! -e "$claude_config" ]; then
+            ln -sf /data/claude-config "$claude_config"
+            echo "  ✓ Claude Code config linked to /data for $user_name"
+        fi
+    fi
+done
 
 echo "Service configuration complete"

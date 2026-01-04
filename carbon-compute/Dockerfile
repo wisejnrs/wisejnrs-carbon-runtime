@@ -389,11 +389,6 @@ RUN set -uex \
   && jupyter server extension enable --sys-prefix ipydrawio || true \
   && pip cache purge
 
-# ---------- Install Claude Code ----------
-USER root
-RUN set -uex \
-  && npm install -g @anthropic-ai/claude-code
-
 # ---------- Final touches ----------
 RUN set -uex \
     && chown -R root:root /etc/supervisor/conf.d || true \
@@ -404,8 +399,8 @@ RUN set -uex \
 
 # Ensure log dirs are present & writable
 RUN set -eux; \
-  install -d -m 0755 /var/log/jupyter /var/log/code-server; \
-  chown -R carbon:carbon /var/log/jupyter /var/log/code-server
+  install -d -m 0755 /var/log/jupyter /var/log/code-server /var/log/rag-api; \
+  chown -R carbon:carbon /var/log/jupyter /var/log/code-server /var/log/rag-api
 
 # ===== Cleanup to reduce image size =====
 RUN set -eux; \
