@@ -467,23 +467,16 @@ RUN set -eux; \
   chown -R carbon:carbon /home/carbon/.mlflow /home/carbon/.superset /home/carbon/mlflow-artifacts; \
   chmod -R 0755 /var/log/mlflow /var/log/superset
 
-# Create Superset config
+# Create Superset config and initialize (skip init to avoid build delays)
 RUN set -eux; \
-  cat > /home/carbon/superset_config.py <<'SUPERSET_EOF'
-import os
-SECRET_KEY = 'carbon-compute-secret-key-change-in-production'
-SQLALCHEMY_DATABASE_URI = 'sqlite:////home/carbon/.superset/superset.db'
-WTF_CSRF_ENABLED = True
-CACHE_CONFIG = {'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300}
-ENABLE_CORS = True
-CORS_OPTIONS = {'supports_credentials': True, 'allow_headers': ['*'], 'resources': ['*'], 'origins': ['*']}
-SUPERSET_EOF
-  chown carbon:carbon /home/carbon/superset_config.py; \
-  # Initialize Superset database
-  export SUPERSET_CONFIG_PATH=/home/carbon/superset_config.py; \
-  superset db upgrade || true; \
-  echo 'admin\nAdmin\nUser\nadmin@example.com\nadmin\nadmin\n' | superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true; \
-  superset init || true
+  printf 'import os\n\
+SECRET_KEY = "carbon-compute-secret-key-change-in-production"\n\
+SQLALCHEMY_DATABASE_URI = "sqlite:////home/carbon/.superset/superset.db"\n\
+WTF_CSRF_ENABLED = True\n\
+CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 300}\n\
+ENABLE_CORS = True\n\
+CORS_OPTIONS = {"supports_credentials": True, "allow_headers": ["*"], "resources": ["*"], "origins": ["*"]}\n' > /home/carbon/superset_config.py; \
+  chown carbon:carbon /home/carbon/superset_config.py
 
 # ---------- Final touches ----------
 RUN set -uex \
