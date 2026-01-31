@@ -389,6 +389,102 @@ RUN set -uex \
   && jupyter server extension enable --sys-prefix ipydrawio || true \
   && pip cache purge
 
+# ---------- Production API & RAG Stack ----------
+# Install comprehensive production packages for API development and RAG
+RUN set -uex \
+ && pip install --no-cache-dir \
+    # Web Framework & API
+    mangum==0.18.0 \
+    python-multipart==0.0.20 \
+    pydantic-settings==2.6.1 \
+    structlog==24.4.0 \
+    # Database Drivers
+    asyncpg==0.30.0 \
+    psycopg2-binary==2.9.10 \
+    # AWS SDK
+    aioboto3==13.3.0 \
+    'aws-lambda-powertools[all]==3.3.0' \
+    'boto3-stubs[bedrock-runtime]==1.35.81' \
+    # Document Processing for RAG
+    'unstructured[pdf]==0.16.9' \
+    PyMuPDF==1.24.14 \
+    'pdfminer.six==20260107' \
+    pypdf==6.6.0 \
+    python-docx==1.1.2 \
+    python-pptx==1.0.2 \
+    trafilatura==1.12.2 \
+    'markitdown[all]>=0.0.1' \
+    # PDF Generation
+    weasyprint==61.2 \
+    pydyf==0.10.0 \
+    # Visualization & Export
+    xlsxwriter==3.2.0 \
+    'qrcode[pil]==8.0' \
+    drawpyo==0.2.3 \
+    # Background Jobs
+    'celery[redis]==5.4.0' \
+    arq==0.26.1 \
+    # Email & Notifications
+    email-validator==2.2.0 \
+    aiosmtplib==3.0.2 \
+    # Scheduling
+    apscheduler==3.10.4 \
+    python-crontab==3.2.0 \
+    # Rate Limiting
+    slowapi==0.1.9 \
+    limits==3.13.0 \
+    # Monitoring
+    prometheus-client==0.21.0 \
+    'sentry-sdk[fastapi]==2.21.0' \
+    # Web Scraping
+    duckduckgo-search==7.2.1 \
+    protego==0.3.1 \
+    # Additional Jupyter packages
+    QtPy==2.4.1 \
+    et-xmlfile==1.1.0 \
+    jupyter==1.0.0 \
+    jupyter-console==6.6.3 \
+    qtconsole==5.5.2 \
+ && pip cache purge
+
+# ---------- Databricks OSS + Superset ----------
+# Install MLflow, Superset, and dbt for Databricks-like experience
+RUN set -uex \
+ && pip install --no-cache-dir \
+    mlflow==3.9.0 \
+    apache-superset==6.0.0 \
+    dbt-core==1.11.2 \
+    dbt-postgres==1.10.0 \
+ && pip cache purge
+
+# ---------- MLflow & Superset Setup ----------
+# Create directories and initialize Superset
+USER root
+RUN set -eux; \
+  mkdir -p /var/log/mlflow /var/log/superset \
+           /home/carbon/.mlflow /home/carbon/.superset \
+           /home/carbon/mlflow-artifacts; \
+  chown -R carbon:carbon /home/carbon/.mlflow /home/carbon/.superset /home/carbon/mlflow-artifacts; \
+  chmod -R 0755 /var/log/mlflow /var/log/superset
+
+# Create Superset config
+RUN set -eux; \
+  cat > /home/carbon/superset_config.py <<'SUPERSET_EOF'
+import os
+SECRET_KEY = 'carbon-compute-secret-key-change-in-production'
+SQLALCHEMY_DATABASE_URI = 'sqlite:////home/carbon/.superset/superset.db'
+WTF_CSRF_ENABLED = True
+CACHE_CONFIG = {'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300}
+ENABLE_CORS = True
+CORS_OPTIONS = {'supports_credentials': True, 'allow_headers': ['*'], 'resources': ['*'], 'origins': ['*']}
+SUPERSET_EOF
+  chown carbon:carbon /home/carbon/superset_config.py; \
+  # Initialize Superset database
+  export SUPERSET_CONFIG_PATH=/home/carbon/superset_config.py; \
+  superset db upgrade || true; \
+  echo 'admin\nAdmin\nUser\nadmin@example.com\nadmin\nadmin\n' | superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true; \
+  superset init || true
+
 # ---------- Final touches ----------
 RUN set -uex \
     && chown -R root:root /etc/supervisor/conf.d || true \
@@ -428,6 +524,7 @@ USER root
 WORKDIR /home/${DEFAULT_USER}
 
 # Only expose compute-specific ports (base already exposes the rest)
-EXPOSE 8888 9999
+# Jupyter, code-server, MLflow, Superset
+EXPOSE 8888 9999 5000 8088
 
 # No ENTRYPOINT/CMD here — inherit from base (tini → supervisord)

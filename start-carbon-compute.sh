@@ -22,6 +22,8 @@ docker run -d \
   -p 0.0.0.0:3390:3389 \
   -p 0.0.0.0:6900:6900 \
   -p 0.0.0.0:5900:5901 \
+  -p 0.0.0.0:5000:5000 \
+  -p 0.0.0.0:8088:8088 \
   -p 0.0.0.0:8888:8888 \
   -p 0.0.0.0:9999:9999 \
   -p 0.0.0.0:5432:5432 \
@@ -62,6 +64,11 @@ echo "                    http://localhost:9999 (local)"
 echo "                    Password: Carbon123#"
 echo ""
 echo "🤖 AI/ML SERVICES:"
+echo "   MLflow:          http://${SERVER_IP}:5000"
+echo "                    http://localhost:5000 (local)"
+echo "   Superset:        http://${SERVER_IP}:8088"
+echo "                    http://localhost:8088 (local)"
+echo "                    Login: admin / admin"
 echo "   Ollama API:      http://${SERVER_IP}:11434"
 echo "   vLLM (if enabled): Check container logs"
 echo ""
