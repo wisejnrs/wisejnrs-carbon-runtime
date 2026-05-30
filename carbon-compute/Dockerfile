@@ -286,13 +286,13 @@ RUN set -eux; \
 # Constraints keep pip resolver saner for fast-moving libs
 RUN set -uex \
  && cat > /tmp/py-constraints.txt <<'EOF'
-torch==2.4.0
-torchvision==0.19.0
-torchaudio==2.4.0
-transformers>=4.41,<4.45
-pytorch-lightning>=2.3,<2.4
-sentence-transformers>=3.0,<3.2
-faiss-cpu>=1.8.0,<1.9
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
+transformers>=4.46,<5.0
+pytorch-lightning>=2.3,<2.6
+sentence-transformers>=3.2,<4.0
+faiss-cpu>=1.8.0,<1.13
 EOF
 
 # 1) Core scientific
@@ -303,10 +303,10 @@ RUN set -uex \
     statsmodels matplotlib seaborn plotly tensorflow keras \
     opencv-python opencv-python-headless
 
-# 2) PyTorch GPU (CUDA 12.1 wheels)
+# 2) PyTorch GPU (CUDA 12.4 wheels)
 RUN set -uex \
- && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.4.0+cu121 torchvision==0.19.0+cu121 torchaudio==2.4.0+cu121
+ && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu124 \
+    torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu124
 
 # 3) "big AI" stack
 RUN set -uex \
