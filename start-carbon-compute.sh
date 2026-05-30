@@ -11,13 +11,18 @@ docker rm carbon-compute 2>/dev/null || true
 # Get server IP for display
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
+# Host directories bind-mounted into the container.
+# Override with CARBON_DATA_DIR / CARBON_WORK_DIR if your layout differs.
+CARBON_DATA_DIR="${CARBON_DATA_DIR:-/data}"
+CARBON_WORK_DIR="${CARBON_WORK_DIR:-/work}"
+
 # Start with GPU support and all services
 docker run -d \
   --name carbon-compute \
   --gpus all \
   --runtime=nvidia \
-  -v /tmp/carbon-compute-data:/data \
-  -v /tmp/carbon-compute-work:/work \
+  -v "${CARBON_DATA_DIR}:/data" \
+  -v "${CARBON_WORK_DIR}:/work" \
   -p 0.0.0.0:2222:2222 \
   -p 0.0.0.0:3390:3389 \
   -p 0.0.0.0:6900:6900 \
