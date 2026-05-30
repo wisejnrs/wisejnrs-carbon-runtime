@@ -293,11 +293,6 @@ transformers>=4.46,<5.0
 pytorch-lightning>=2.3,<2.6
 sentence-transformers>=3.2,<4.0
 faiss-cpu>=1.8.0,<1.13
-# Phase 3: numpy 2.x — pandas 2.1.4 is the only consumer in the stack
-# still pinning numpy<2; bumping pandas≥2.2.2 unblocks numpy 2.x which
-# opencv-python-headless and cupy already require at runtime.
-numpy>=2.0,<2.3
-pandas>=2.2.2
 EOF
 
 # 1) Core scientific
