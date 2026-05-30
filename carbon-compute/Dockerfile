@@ -300,7 +300,7 @@ RUN set -uex \
  && pip install --upgrade pip \
  && pip install --no-cache-dir -c /tmp/py-constraints.txt \
     wheel packaging numpy pandas scipy scikit-learn scikit-image \
-    statsmodels matplotlib seaborn plotly tensorflow keras \
+    statsmodels matplotlib seaborn plotly tensorflow keras tf-keras \
     opencv-python opencv-python-headless
 
 # 2) PyTorch GPU (CUDA 12.4 wheels)
