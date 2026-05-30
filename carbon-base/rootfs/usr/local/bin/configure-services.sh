@@ -38,10 +38,14 @@ enable_service() {
 # ============================================
 
 # PostgreSQL - default OFF
+# postgres-init runs unconditionally otherwise — it waits 60s for a postgres
+# that's never started, then fails. Tie it to the same toggle.
 if [ "${ENABLE_POSTGRESQL:-false}" = "true" ]; then
     enable_service "postgres"
+    enable_service "postgres-init"
 else
     disable_service "postgres"
+    disable_service "postgres-init"
 fi
 
 # MySQL - default OFF
