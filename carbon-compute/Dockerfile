@@ -328,7 +328,7 @@ RUN set -uex \
 # 4) Data / cloud / notebooks / viz / NLP
 RUN set -uex \
  && pip install --no-cache-dir -c /tmp/py-constraints.txt \
-    pyspark delta boto3 openai \
+    pyspark==3.4.1 delta boto3 openai \
     ipywidgets ipyleaflet ipycanvas nteract_on_jupyter rise \
     ffmpeg-python librosa textblob spacy stanza \
     beautifulsoup4 requests artifacts-keyring pyyaml orjson \
