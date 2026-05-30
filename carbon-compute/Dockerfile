@@ -289,16 +289,10 @@ RUN set -uex \
 torch==2.4.0
 torchvision==0.19.0
 torchaudio==2.4.0
-aiohttp==3.9.5
-multidict==6.0.5
-yarl==1.9.4
-frozenlist==1.4.1
-aiosignal==1.3.1
 transformers>=4.41,<4.45
 pytorch-lightning>=2.3,<2.4
 sentence-transformers>=3.0,<3.2
 faiss-cpu>=1.8.0,<1.9
-urllib3<2.3
 EOF
 
 # 1) Core scientific
@@ -344,7 +338,7 @@ RUN set -uex \
 # (note: 'delta' removed here to avoid duplicate install)
 RUN set -uex \
  && pip install --no-cache-dir -c /tmp/py-constraints.txt \
-    pygit2 vpk faiss-cpu zmq markupsafe==2.1.1 \
+    pygit2 vpk faiss-cpu zmq \
     pymssql pymongo psycopg[binary] \
     sendsmtp PySmbClient oracledb \
     redis paho-mqtt pdfkit \
