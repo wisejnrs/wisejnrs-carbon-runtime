@@ -445,9 +445,9 @@ RUN set -uex \
 # Install MLflow, Superset, and dbt for Databricks-like experience
 RUN set -uex \
  && pip install --no-cache-dir \
-    mlflow==3.9.0 \
-    apache-superset==6.0.0 \
-    dbt-core==1.11.2 \
+    mlflow==3.12.0 \
+    apache-superset==6.1.0 \
+    dbt-core==1.11.11 \
     dbt-postgres==1.10.0 \
  && pip cache purge
 
