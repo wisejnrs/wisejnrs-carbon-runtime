@@ -388,57 +388,65 @@ RUN set -uex \
 RUN set -uex \
  && pip install --no-cache-dir \
     # Web Framework & API
-    mangum==0.18.0 \
-    python-multipart==0.0.20 \
-    pydantic-settings==2.6.1 \
-    structlog==24.4.0 \
+    mangum==0.21.0 \
+    python-multipart==0.0.29 \
+    pydantic-settings==2.14.1 \
+    structlog==25.5.0 \
     # Database Drivers
-    asyncpg==0.30.0 \
-    psycopg2-binary==2.9.10 \
+    asyncpg==0.31.0 \
+    psycopg2-binary==2.9.12 \
     # AWS SDK
-    aioboto3==13.3.0 \
-    'aws-lambda-powertools[all]==3.3.0' \
-    'boto3-stubs[bedrock-runtime]==1.35.81' \
+    aioboto3==15.5.0 \
+    'aws-lambda-powertools[all]==3.29.0' \
+    'boto3-stubs[bedrock-runtime]==1.43.18' \
     # Document Processing for RAG
+    # unstructured deferred: 0.16→0.22 is 6 minors in 0.x with API churn
     'unstructured[pdf]==0.16.9' \
-    PyMuPDF==1.24.14 \
+    PyMuPDF==1.27.2.3 \
     'pdfminer.six==20260107' \
-    pypdf==6.6.0 \
-    python-docx==1.1.2 \
+    pypdf==6.12.2 \
+    python-docx==1.2.0 \
     python-pptx==1.0.2 \
+    # trafilatura deferred: 1→2 is a major API change
     trafilatura==1.12.2 \
     'markitdown[all]>=0.0.1' \
     # PDF Generation
+    # weasyprint + pydyf deferred: 61→68 is 7 majors of CSS/render churn;
+    # pydyf 0.12 also conflicts with weasyprint 61's pydyf<0.11 cap.
     weasyprint==61.2 \
     pydyf==0.10.0 \
     # Visualization & Export
-    xlsxwriter==3.2.0 \
-    'qrcode[pil]==8.0' \
-    drawpyo==0.2.3 \
+    xlsxwriter==3.2.9 \
+    'qrcode[pil]==8.2' \
+    drawpyo==0.2.5 \
     # Background Jobs
-    'celery[redis]==5.4.0' \
-    arq==0.26.1 \
+    'celery[redis]==5.6.3' \
+    arq==0.28.0 \
     # Email & Notifications
-    email-validator==2.2.0 \
+    email-validator==2.3.0 \
+    # aiosmtplib deferred: 3→5 is 2 majors with API changes
     aiosmtplib==3.0.2 \
     # Scheduling
-    apscheduler==3.10.4 \
-    python-crontab==3.2.0 \
+    apscheduler==3.11.2 \
+    python-crontab==3.3.0 \
     # Rate Limiting
     slowapi==0.1.9 \
+    # limits deferred: 3→5 is 2 majors with config/storage API changes
     limits==3.13.0 \
     # Monitoring
-    prometheus-client==0.21.0 \
-    'sentry-sdk[fastapi]==2.21.0' \
+    prometheus-client==0.25.0 \
+    'sentry-sdk[fastapi]==2.61.0' \
     # Web Scraping
+    # duckduckgo-search deferred: 7→8 is 1 major (DDG API client churn)
     duckduckgo-search==7.2.1 \
-    protego==0.3.1 \
+    protego==0.6.0 \
     # Additional Jupyter packages
-    QtPy==2.4.1 \
+    QtPy==2.4.3 \
+    # et-xmlfile deferred: 1→2 needs openpyxl interop verification
     et-xmlfile==1.1.0 \
-    jupyter==1.0.0 \
+    jupyter==1.1.1 \
     jupyter-console==6.6.3 \
-    qtconsole==5.5.2 \
+    qtconsole==5.7.2 \
  && pip cache purge
 
 # ---------- Databricks OSS + Superset ----------
