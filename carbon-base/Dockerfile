@@ -102,7 +102,7 @@ RUN set -eux; \
       apt-transport-https apt-utils ca-certificates software-properties-common gnupg2 \
       curl wget git git-flow git-lfs supervisor tini \
       bash-completion coreutils binutils cpio \
-      unzip zip xz-utils p7zip-full tar \
+      unzip zip xz-utils p7zip-full tar zstd \
       net-tools iputils-ping mtr tmux vnstat iproute2 \
       xauth x11-utils mc lsb-release manpages-dev \
       openssh-client openssh-server sudo vim nano \
@@ -411,13 +411,13 @@ RUN set -eux; \
     *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
   esac; \
   if [ -n "$OLLAMA_VERSION" ]; then \
-    O_URL="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-${O_ARCH}.tgz"; \
+    O_URL="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-${O_ARCH}.tar.zst"; \
   else \
-    O_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-${O_ARCH}.tgz"; \
+    O_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-${O_ARCH}.tar.zst"; \
   fi; \
-  curl -fL --retry 5 --retry-delay 3 "$O_URL" -o /tmp/ollama.tgz; \
-  tar -xzf /tmp/ollama.tgz -C /usr/local; \
-  rm -f /tmp/ollama.tgz; \
+  curl -fL --retry 5 --retry-delay 3 "$O_URL" -o /tmp/ollama.tar.zst; \
+  tar --zstd -xf /tmp/ollama.tar.zst -C /usr/local; \
+  rm -f /tmp/ollama.tar.zst; \
   command -v ollama; \
   ollama --version || true; \
   install -d -m 0755 /var/lib/ollama /var/log/ollama; \
