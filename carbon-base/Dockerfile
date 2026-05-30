@@ -1,7 +1,7 @@
 # ===== MULTI-STAGE BUILD FOR SIZE OPTIMIZATION =====
 
 # ===== BUILDER STAGE 1: Compile pgvector (PostgreSQL extension) =====
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS pgvector-builder
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS pgvector-builder
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git ca-certificates postgresql-server-dev-all \
@@ -22,7 +22,7 @@ RUN npm i -g npm@latest \
 # ===== Base image selection (RUNTIME, not DEVEL) =====
 # Using runtime base instead of devel - saves ~3GB
 # GPU-enabled by default with CPU fallback support
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base-system
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS base-system
 
 LABEL maintainer="Michael Wise <mike@WiseJNRS.net>" version="2.0.0-gpu"
 
