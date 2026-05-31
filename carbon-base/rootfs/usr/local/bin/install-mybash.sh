@@ -70,6 +70,18 @@ cp -r .config/* /etc/skel/.config/ 2>/dev/null || true
 cp .bashrc /etc/skel/.bashrc 2>/dev/null || true
 cp .bash_aliases /etc/skel/.bash_aliases 2>/dev/null || true
 
+# Carbon override: disable upstream mybash's rm→trash alias.
+# trash-cli's noisy "unusable .Trash dir" warnings on bind-mounted volumes
+# (which this image always has via /work and /data) make rm output
+# confusing. Users who want the safety net can re-enable per-shell with
+# `alias rm='trash -v'` or re-source the original line. trash and
+# trash-empty remain installed and callable directly.
+for f in /root/.bashrc /home/${DEFAULT_USER}/.bashrc /etc/skel/.bashrc; do
+    if [ -f "$f" ]; then
+        sed -i "s|^alias rm='trash -v'|# alias rm='trash -v'  # disabled by carbon-runtime install-mybash.sh|" "$f"
+    fi
+done
+
 # Install Nerd Fonts for better terminal display
 echo "Installing Nerd Fonts (FiraCode)..."
 mkdir -p /usr/share/fonts/nerd-fonts
