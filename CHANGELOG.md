@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-06-01
+
+Patch release covering interactive-shell papercuts found in post-v2.1.0 testing, plus a fix for a recurring Apache mirror flake that's been killing rebuilds.
+
+### Fixed
+- `mybash`: comment out 11 upstream alias definitions whose target commands aren't installed in this image — `rm → trash`, `vi/vim/vis → nvim`, `less/hlp → less`, `multitail`, `alert → notify-send`, `kssh → kitty`, `yayf → yay`, `whatismyip → whatsmyip`. Typing `vi` / `vim` / `rm` etc. now hits the real `/usr/bin/*` binary instead of either failing silently or piping through `trash-cli` with confusing `.Trash`-vs-`.Trash-1000` warnings on bind-mounted volumes (#16, #17).
+- `carbon-compute/Dockerfile`: add `curl --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30` to the Maven/Spark download step. `archive.apache.org` reliably resets connections mid-transfer on the ~370 MB Spark tarball, which was killing the whole build at 80-90% of the download. The retry rides out the flake (#18).
+
+### How to revive any of the disabled aliases per-user
+```bash
+sed -i "s|^# alias vi=|alias vi=|" ~/.bashrc
+. ~/.bashrc
+```
+
 ## [2.1.0] — 2026-05-31
 
 End-to-end refresh of the GPU-enabled runtime images: CUDA + PyTorch + ML stack upgrade, plus a sweep of pre-existing supervisord and upstream-asset regressions. Full session detail in [`SESSION-SUMMARY-2026-05-30.md`](SESSION-SUMMARY-2026-05-30.md).
