@@ -100,7 +100,11 @@ RUN set -uex; \
   /usr/local/bin/fix-permissions "/home/${DEFAULT_USER}"
 
 # ---------- Fetch Maven & Spark from official sources (with archive fallbacks) ----------
+# archive.apache.org regularly resets connections mid-transfer on big files
+# (Spark tarball is ~370 MB). --retry-all-errors plus a generous retry
+# count rides out the flake instead of bailing the whole build at 90%.
 USER root
+ARG APACHE_CURL_FLAGS="-fL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30"
 RUN set -uex \
     && HADOOP_MAJOR="$(echo "${HADOOP_VERSION}" | cut -d. -f1)" \
     && HADOOP_FLAVOR="hadoop${HADOOP_MAJOR}" \
@@ -112,8 +116,8 @@ RUN set -uex \
            | sed 's|href=\"||;s|/||' | sort -V | tail -1)"; \
        fi \
     && MAVEN_TGZ="apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
-    && ( curl -fL "https://downloads.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/${MAVEN_TGZ}" -o "/tmp/${MAVEN_TGZ}" \
-         || curl -fL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/${MAVEN_TGZ}" -o "/tmp/${MAVEN_TGZ}" ) \
+    && ( curl ${APACHE_CURL_FLAGS} "https://downloads.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/${MAVEN_TGZ}" -o "/tmp/${MAVEN_TGZ}" \
+         || curl ${APACHE_CURL_FLAGS} "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/${MAVEN_TGZ}" -o "/tmp/${MAVEN_TGZ}" ) \
     \
     # ----- Spark (SPARK_VERSION or latest) -----
     && if [ "${SPARK_VERSION}" = "latest" ]; then \
@@ -122,8 +126,8 @@ RUN set -uex \
            | sed 's|spark-||;s|/||' | sort -V | tail -1)"; \
        fi \
     && SPARK_TGZ="spark-${SPARK_VERSION}-bin-${HADOOP_FLAVOR}.tgz" \
-    && ( curl -fL "https://downloads.apache.org/spark/spark-${SPARK_VERSION}/${SPARK_TGZ}" -o "/tmp/${SPARK_TGZ}" \
-         || curl -fL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/${SPARK_TGZ}" -o "/tmp/${SPARK_TGZ}" )
+    && ( curl ${APACHE_CURL_FLAGS} "https://downloads.apache.org/spark/spark-${SPARK_VERSION}/${SPARK_TGZ}" -o "/tmp/${SPARK_TGZ}" \
+         || curl ${APACHE_CURL_FLAGS} "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/${SPARK_TGZ}" -o "/tmp/${SPARK_TGZ}" )
 
 # ---------- Install Maven ----------
 RUN set -uex \
