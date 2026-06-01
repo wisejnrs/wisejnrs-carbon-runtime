@@ -70,16 +70,32 @@ cp -r .config/* /etc/skel/.config/ 2>/dev/null || true
 cp .bashrc /etc/skel/.bashrc 2>/dev/null || true
 cp .bash_aliases /etc/skel/.bash_aliases 2>/dev/null || true
 
-# Carbon override: disable upstream mybash's rm→trash alias.
-# trash-cli's noisy "unusable .Trash dir" warnings on bind-mounted volumes
-# (which this image always has via /work and /data) make rm output
-# confusing. Users who want the safety net can re-enable per-shell with
-# `alias rm='trash -v'` or re-source the original line. trash and
-# trash-empty remain installed and callable directly.
+# Carbon override: disable upstream mybash aliases whose target commands
+# aren't installed in this image (most of them are Arch-ecosystem
+# defaults), and the rm→trash one which produces confusing trash-cli
+# noise on the image's bind-mounted /work and /data volumes.
+#
+# Each alias is COMMENTED (not deleted) so it's discoverable and trivial
+# to flip back per-user, e.g.:
+#   sed -i "s|^# alias vi=|alias vi=|" ~/.bashrc
+#
+# Targets that aren't in the image (as of this commit): nvim, less,
+# multitail, notify-send, kitty, yay, whatsmyip.
 for f in /root/.bashrc /home/${DEFAULT_USER}/.bashrc /etc/skel/.bashrc; do
-    if [ -f "$f" ]; then
-        sed -i "s|^alias rm='trash -v'|# alias rm='trash -v'  # disabled by carbon-runtime install-mybash.sh|" "$f"
-    fi
+    [ -f "$f" ] || continue
+    sed -i -E "
+        s#^(alias rm=)#\\# \1#
+        s#^(alias vi=)#\\# \1#
+        s#^(alias vim=)#\\# \1#
+        s#^(alias vis=)#\\# \1#
+        s#^(alias less=)#\\# \1#
+        s#^(alias hlp=)#\\# \1#
+        s#^(alias multitail=)#\\# \1#
+        s#^(alias alert=)#\\# \1#
+        s#^(alias kssh=)#\\# \1#
+        s#^(alias yayf=)#\\# \1#
+        s#^(alias whatismyip=)#\\# \1#
+    " "$f"
 done
 
 # Install Nerd Fonts for better terminal display
