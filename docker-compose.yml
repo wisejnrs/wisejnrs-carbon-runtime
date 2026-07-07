@@ -366,6 +366,27 @@ services:
       - dev
       - full
 
+  # ===== DISCORD BOT (TypeScript rewrite of Carbon.Bot) =====
+  carbon-bot:
+    image: wisejnrs/carbon-bot:latest
+    container_name: carbon-bot
+    build:
+      context: ./carbon-bot
+      dockerfile: Dockerfile
+    env_file:
+      - ./carbon-bot/.env
+    ports:
+      - "8300:8300"   # /ping and /status health endpoints
+    volumes:
+      - ./carbon-bot/corpus:/app/corpus        # drop documents here, then /corpus in Discord
+      - carbon-bot-data:/app/data              # LanceDB vectors, SQLite history, HF model cache
+    restart: unless-stopped
+    networks:
+      - carbon-network
+    profiles:
+      - bot
+      - full
+
 volumes:
   # Carbon homes
   carbon-base-home:
@@ -401,6 +422,10 @@ volumes:
 
   # Monitoring
   portainer-data:
+    driver: local
+
+  # Discord bot
+  carbon-bot-data:
     driver: local
 
 networks:
