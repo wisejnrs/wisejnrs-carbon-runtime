@@ -31,8 +31,10 @@ Also included:
 - **discord.js v14** on Node 22, TypeScript, ESM.
 - **AI providers** (`src/ai/`): Anthropic (`claude-opus-4-8`, adaptive thinking), OpenAI
   (`gpt-4o`), or `claude-code` — the Claude Agent SDK driving the machine's authenticated
-  Claude Code CLI (subscription login, no API key; tools disabled, one turn per reply).
-  Selected by `AI_PROVIDER`.
+  Claude Code CLI (subscription login, no API key). Selected by `AI_PROVIDER`.
+  `CLAUDE_CODE_MODE` gates capability: `chat` (no tools, default), `readonly`
+  (skills + Read/Grep/Glob), or `full` (skills + all tools auto-approved — anyone who
+  can message the bot can drive them; trusted servers only).
 - **RAG** (`src/rag/`): retrieval prefers the **Wise knowledge server** when
   `KNOWLEDGE_MCP_URL`/`KNOWLEDGE_MCP_KEY` are set — an MCP `semantic_search` call against
   the already-indexed corpus. Fallback is the local store: **bge-small-en-v1.5**

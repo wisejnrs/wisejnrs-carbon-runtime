@@ -28,6 +28,11 @@ export const config = {
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o',
   // "default" inherits whatever model the local Claude Code login uses.
   claudeCodeModel: process.env.CLAUDE_CODE_MODEL ?? 'default',
+  // chat: no tools (pure conversation). readonly: skills + read-only tools.
+  // full: skills + all tools, auto-approved - anyone in the server can drive them.
+  claudeCodeMode: (['chat', 'readonly', 'full'].includes(process.env.CLAUDE_CODE_MODE ?? 'chat')
+    ? (process.env.CLAUDE_CODE_MODE ?? 'chat')
+    : 'chat') as 'chat' | 'readonly' | 'full',
   systemPrompt:
     process.env.SYSTEM_PROMPT ??
     'You are Carbon, a helpful Discord bot. Keep answers concise - Discord messages are limited to 2000 characters.',
