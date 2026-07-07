@@ -49,6 +49,9 @@ export const config = {
 
   // Paths
   dataDir: process.env.DATA_DIR ?? path.join(rootDir, 'data'),
+  // Channel-per-repo development: channels named after directories under this
+  // root become persistent Claude Code dev sessions in that repo.
+  repoRoot: process.env.REPO_ROOT ?? '/work/wisejnrs-projects',
   corpusDir: process.env.CORPUS_DIR ?? path.join(rootDir, 'corpus'),
   yoloModelPath: process.env.YOLO_MODEL_PATH ?? path.join(rootDir, 'models', 'yolo26s.onnx'),
 

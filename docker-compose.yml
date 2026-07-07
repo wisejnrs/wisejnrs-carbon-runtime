@@ -381,6 +381,11 @@ services:
       - ./carbon-bot/corpus:/app/corpus        # drop documents here, then /corpus in Discord
       - carbon-bot-data:/app/data              # LanceDB vectors, SQLite history, HF model cache
       - ~/.claude:/home/node/.claude           # Claude Code login for the claude-code provider (rw: token refresh)
+      - ~/.claude.json:/home/node/.claude-host.json:ro   # user-scope MCP servers for dev sessions
+      - /work/wisejnrs-projects:/work/wisejnrs-projects  # channel-per-repo dev workspaces
+    environment:
+      - HOST_CLAUDE_JSON=/home/node/.claude-host.json
+      - REPO_ROOT=/work/wisejnrs-projects
     restart: unless-stopped
     # No carbon-network: the bot only needs outbound internet + port 8300,
     # and the pinned 172.20/16 subnet can collide with other stacks.

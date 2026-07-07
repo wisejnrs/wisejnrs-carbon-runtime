@@ -9,6 +9,12 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
 WORKDIR /app
+# git for channel-per-repo dev sessions; identity for commits made by the bot
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system user.name "MrRoboto" \
+    && git config --system user.email "mrroboto@wisejnrs.net" \
+    && git config --system --add safe.directory '*'
 ENV NODE_ENV=production \
     DATA_DIR=/app/data \
     CORPUS_DIR=/app/corpus \

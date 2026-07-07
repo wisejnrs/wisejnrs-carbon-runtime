@@ -84,7 +84,7 @@ export class ClaudeCodeProvider implements AiProvider {
   }
 }
 
-function describeToolUse(name: string, input: unknown): string {
+export function describeToolUse(name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>;
   if (name === 'Skill' && typeof args.command === 'string') return `skill ${args.command}`;
   if (name === 'Skill' && typeof args.skill === 'string') return `skill ${args.skill}`;

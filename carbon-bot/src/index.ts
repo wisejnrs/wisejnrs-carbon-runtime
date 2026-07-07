@@ -2,10 +2,12 @@ import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
 import { runGroundedChat, replyFooter } from './chat.js';
+import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
 import { logHistory } from './db/history.js';
 
-const chatEnabled = config.enableMentionChat || config.chatChannels.length > 0;
+const chatEnabled =
+  config.enableMentionChat || config.chatChannels.length > 0 || devChannelsAvailable();
 
 const intents = [GatewayIntentBits.Guilds];
 if (chatEnabled) {
@@ -63,6 +65,51 @@ if (chatEnabled) {
       'name' in message.channel && typeof message.channel.name === 'string'
         ? message.channel.name.toLowerCase()
         : '';
+
+    // Channel-per-repo development takes precedence over plain chat.
+    const repoPath = repoForChannel(channelName);
+    if (repoPath) {
+      const task = message.content.trim();
+      if (!task || message.author.bot) return;
+      if (task === '!reset') {
+        const had = resetDevSession(message.channelId);
+        await message.reply(had ? '🔄 Session reset - next message starts fresh.' : 'No active session.');
+        return;
+      }
+      console.log(`[dev] ${message.author.tag} in #${channelName} -> ${repoPath}`);
+      try {
+        const placeholder = await message.reply(`⚙️ Working in \`${repoPath}\`…`);
+        let done = false;
+        let last = Date.now();
+        const reply = await devChat(message.channelId, repoPath, task, (note) => {
+          if (done || Date.now() - last < 5000) return;
+          last = Date.now();
+          void placeholder.edit(`⚙️ Working — ${note}`.slice(0, 1900)).catch(() => {});
+        }).finally(() => {
+          done = true;
+        });
+        await placeholder.edit(reply.slice(0, 2000));
+        if (reply.length > 2000 && 'send' in message.channel) {
+          for (let i = 2000; i < reply.length; i += 1990) {
+            await message.channel.send(reply.slice(i, i + 1990));
+          }
+        }
+        logHistory({
+          userId: message.author.id,
+          userTag: message.author.tag,
+          guildId: message.guildId,
+          channelId: message.channelId,
+          command: 'dev',
+          input: task,
+          output: reply.slice(0, 4000),
+        });
+      } catch (error) {
+        console.error('[dev] session failed:', error);
+        await message.reply('Dev session failed. Check the logs or send !reset.').catch(() => {});
+      }
+      return;
+    }
+
     const isChatChannel =
       config.chatChannels.includes(message.channelId) ||
       config.chatChannels.includes(channelName);
