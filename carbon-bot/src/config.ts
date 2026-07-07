@@ -52,6 +52,9 @@ export const config = {
   // Channel-per-repo development: channels named after directories under this
   // root become persistent Claude Code dev sessions in that repo.
   repoRoot: process.env.REPO_ROOT ?? '/work/wisejnrs-projects',
+  // Free-text appended to dev/full-mode system prompts - use it to tell the
+  // agent about mounted shares, conventions, anything environment-specific.
+  extraContext: process.env.EXTRA_CONTEXT ?? '',
   corpusDir: process.env.CORPUS_DIR ?? path.join(rootDir, 'corpus'),
   yoloModelPath: process.env.YOLO_MODEL_PATH ?? path.join(rootDir, 'models', 'yolo26s.onnx'),
 

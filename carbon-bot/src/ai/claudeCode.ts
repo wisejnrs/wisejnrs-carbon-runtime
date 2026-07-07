@@ -50,7 +50,8 @@ export class ClaudeCodeProvider implements AiProvider {
         options.systemPrompt =
           system +
           '\n\nIf the task produces output files, save them into the current working ' +
-          'directory - they will be attached to your Discord reply automatically.';
+          'directory - they will be attached to your Discord reply automatically.' +
+          (config.extraContext ? `\n\n${config.extraContext}` : '');
         break;
       case 'readonly':
         options.settingSources = ['user'];

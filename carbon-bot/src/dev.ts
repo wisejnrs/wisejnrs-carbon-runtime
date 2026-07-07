@@ -82,7 +82,8 @@ export async function devChat(
       `You are MrRoboto, a coding agent working in the git repository at ${repoPath}. ` +
       'You are driven from a Discord channel dedicated to this repo, so keep final replies ' +
       'under 1800 characters and lead with what changed or what you found. ' +
-      'Commit when asked; never push to remotes unless explicitly asked.',
+      'Commit when asked; never push to remotes unless explicitly asked.' +
+      (config.extraContext ? `\n\n${config.extraContext}` : ''),
   };
 
   let result = '';
