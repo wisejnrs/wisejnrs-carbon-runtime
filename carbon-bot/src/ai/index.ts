@@ -2,9 +2,9 @@ import { config } from '../config.js';
 import { AnthropicProvider } from './anthropic.js';
 import { OpenAiProvider } from './openai.js';
 import { ClaudeCodeProvider } from './claudeCode.js';
-import type { AiProvider, ChatMessage } from './provider.js';
+import type { AiProvider, ChatMessage, ChatProgress, ChatResult } from './provider.js';
 
-export type { AiProvider, ChatMessage };
+export type { AiProvider, ChatMessage, ChatProgress, ChatResult };
 
 export function createProvider(): AiProvider {
   switch (config.provider) {

@@ -1,8 +1,7 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
-import { getHistory, pushHistory } from './ai/index.js';
-import { askWithRag } from './rag/index.js';
+import { runGroundedChat, replyFooter } from './chat.js';
 import { startHealthServer } from './health.js';
 import { logHistory } from './db/history.js';
 
@@ -84,11 +83,18 @@ if (chatEnabled) {
       .trim();
     if (!content) return;
     try {
-      await message.channel.sendTyping();
-      pushHistory(message.channelId, { role: 'user', content });
-      const { answer } = await askWithRag(ai, getHistory(message.channelId), content);
-      pushHistory(message.channelId, { role: 'assistant', content: answer });
-      await message.reply(answer.slice(0, 2000));
+      const placeholder = await message.reply('⚙️ Working…');
+      const reply = await runGroundedChat(ai, message.channelId, content, (status) =>
+        placeholder.edit(status),
+      );
+      const full = reply.answer + replyFooter(reply);
+      await placeholder.edit({ content: full.slice(0, 2000), files: reply.attachments });
+      if (full.length > 2000 && 'send' in message.channel) {
+        for (let i = 2000; i < full.length; i += 1990) {
+          await message.channel.send(full.slice(i, i + 1990));
+        }
+      }
+      await reply.cleanup();
       logHistory({
         userId: message.author.id,
         userTag: message.author.tag,
@@ -96,7 +102,7 @@ if (chatEnabled) {
         channelId: message.channelId,
         command: isMention ? 'mention' : 'chat',
         input: content,
-        output: answer.slice(0, 4000),
+        output: reply.answer.slice(0, 4000),
       });
     } catch (error) {
       console.error('[mention] AI request failed:', error);

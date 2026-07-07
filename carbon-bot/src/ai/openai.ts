@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { AiProvider, ChatMessage } from './provider.js';
+import type { AiProvider, ChatMessage, ChatResult } from './provider.js';
 
 export class OpenAiProvider implements AiProvider {
   readonly name = 'openai';
@@ -7,12 +7,12 @@ export class OpenAiProvider implements AiProvider {
 
   constructor(readonly model: string) {}
 
-  async chat(history: ChatMessage[], system: string): Promise<string> {
+  async chat(history: ChatMessage[], system: string): Promise<ChatResult> {
     const response = await this.client.chat.completions.create({
       model: this.model,
       max_completion_tokens: 1024,
       messages: [{ role: 'system', content: system }, ...history],
     });
-    return response.choices[0]?.message?.content ?? '(no response)';
+    return { text: response.choices[0]?.message?.content ?? '(no response)', files: [] };
   }
 }

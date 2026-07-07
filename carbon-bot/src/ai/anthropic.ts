@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AiProvider, ChatMessage } from './provider.js';
+import type { AiProvider, ChatMessage, ChatResult } from './provider.js';
 
 export class AnthropicProvider implements AiProvider {
   readonly name = 'anthropic';
@@ -7,7 +7,7 @@ export class AnthropicProvider implements AiProvider {
 
   constructor(readonly model: string) {}
 
-  async chat(history: ChatMessage[], system: string): Promise<string> {
+  async chat(history: ChatMessage[], system: string): Promise<ChatResult> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 1024,
@@ -20,8 +20,8 @@ export class AnthropicProvider implements AiProvider {
       .map((block) => block.text)
       .join('\n');
     if (response.stop_reason === 'refusal') {
-      return 'Sorry, I can’t help with that one.';
+      return { text: 'Sorry, I can’t help with that one.', files: [] };
     }
-    return text || '(no response)';
+    return { text: text || '(no response)', files: [] };
   }
 }

@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import type { AiProvider, ChatMessage } from '../ai/index.js';
+import type { AiProvider, ChatMessage, ChatProgress } from '../ai/index.js';
 import { embedOne } from './embeddings.js';
 import { search, type SearchHit } from './store.js';
 import { knowledgeConfigured, knowledgeSearch } from './knowledge.js';
@@ -7,6 +7,13 @@ import { knowledgeConfigured, knowledgeSearch } from './knowledge.js';
 export { ingestCorpus } from './ingest.js';
 export { corpusCount } from './store.js';
 export { knowledgeConfigured } from './knowledge.js';
+
+export interface RagAnswer {
+  answer: string;
+  sources: string[];
+  files: string[];
+  workDir?: string;
+}
 
 // RAG-grounded ask: retrieve relevant corpus passages and hand them to the model
 // as context. Retrieval prefers the remote knowledge server (full Wise corpus,
@@ -16,7 +23,9 @@ export async function askWithRag(
   provider: AiProvider,
   history: ChatMessage[],
   question: string,
-): Promise<{ answer: string; sources: string[] }> {
+  onProgress?: ChatProgress,
+): Promise<RagAnswer> {
+  onProgress?.('searching the corpus');
   let hits: SearchHit[] = [];
   if (knowledgeConfigured()) hits = await knowledgeSearch(question, 6);
   if (!hits.length) hits = await search(await embedOne(question), 5);
@@ -33,6 +42,6 @@ export async function askWithRag(
       context;
   }
 
-  const answer = await provider.chat(history, system);
-  return { answer, sources };
+  const result = await provider.chat(history, system, onProgress);
+  return { answer: result.text, sources, files: result.files, workDir: result.workDir };
 }

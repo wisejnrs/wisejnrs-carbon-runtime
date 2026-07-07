@@ -6,9 +6,9 @@ import {
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
 } from 'discord.js';
-import { config } from '../config.js';
-import { createProvider, getHistory, pushHistory } from '../ai/index.js';
-import { askWithRag, corpusCount, ingestCorpus } from '../rag/index.js';
+import { createProvider } from '../ai/index.js';
+import { corpusCount, ingestCorpus } from '../rag/index.js';
+import { runGroundedChat, replyFooter } from '../chat.js';
 import { detectObjects, yoloAvailable } from '../yolo/detect.js';
 import { logHistory } from '../db/history.js';
 
@@ -89,20 +89,15 @@ const ask: Command = {
     const message = interaction.options.getString('message', true);
     await interaction.deferReply();
 
-    pushHistory(interaction.channelId, { role: 'user', content: message });
     try {
-      const { answer, sources } = await askWithRag(
-        ai,
-        getHistory(interaction.channelId),
-        message,
+      const reply = await runGroundedChat(ai, interaction.channelId, message, (status) =>
+        interaction.editReply(status),
       );
-      pushHistory(interaction.channelId, { role: 'assistant', content: answer });
-
-      const footer = sources.length ? `\n-# Sources: ${sources.join(', ')}`.slice(0, 500) : '';
-      const parts = chunk(answer + footer);
-      await interaction.editReply(parts[0]);
+      const parts = chunk(reply.answer + replyFooter(reply));
+      await interaction.editReply({ content: parts[0], files: reply.attachments });
       for (const part of parts.slice(1)) await interaction.followUp(part);
-      audit(interaction, message, answer);
+      await reply.cleanup();
+      audit(interaction, message, reply.answer);
     } catch (error) {
       console.error('[ask] AI request failed:', error);
       await interaction.editReply('Something went wrong talking to the AI. Check the logs.');
