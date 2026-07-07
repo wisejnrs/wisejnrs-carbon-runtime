@@ -8,7 +8,15 @@ import {
 } from 'discord.js';
 import { createProvider } from '../ai/index.js';
 import { corpusCount, ingestCorpus } from '../rag/index.js';
+import { docmostSearch } from '../rag/knowledge.js';
 import { runGroundedChat, replyFooter } from '../chat.js';
+import { getWeather } from '../weather.js';
+import {
+  availableImageProviders,
+  generateImage,
+  type ImageProvider,
+  type ImageSize,
+} from '../imagegen.js';
 import { detectObjects, yoloAvailable } from '../yolo/detect.js';
 import { logHistory } from '../db/history.js';
 
@@ -131,7 +139,7 @@ const corpus: Command = {
 const yolov: Command = {
   data: new SlashCommandBuilder()
     .setName('yolov')
-    .setDescription('Detect objects in an image (YOLOv8)')
+    .setDescription('Detect objects in an image (YOLO26)')
     .addAttachmentOption((option) =>
       option.setName('image').setDescription('Image to analyse').setRequired(true),
     ),
@@ -146,7 +154,7 @@ const yolov: Command = {
     }
     if (!yoloAvailable()) {
       await interaction.reply({
-        content: 'YOLO model not found on the server (models/yolov8s.onnx).',
+        content: 'YOLO model not found on the server (models/*.onnx).',
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -175,5 +183,115 @@ const yolov: Command = {
   },
 };
 
-export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov];
+const weather: Command = {
+  data: new SlashCommandBuilder()
+    .setName('weather')
+    .setDescription('Current weather and 3-day forecast (Open-Meteo)')
+    .addStringOption((option) =>
+      option.setName('location').setDescription('City or place name').setRequired(true),
+    ),
+  async execute(interaction) {
+    const location = interaction.options.getString('location', true);
+    await interaction.deferReply();
+    try {
+      const report = await getWeather(location);
+      await interaction.editReply(report.slice(0, 2000));
+      audit(interaction, location, report);
+    } catch (error) {
+      console.error('[weather] failed:', error);
+      await interaction.editReply('Weather lookup failed. Try again later.');
+    }
+  },
+};
+
+const docs: Command = {
+  data: new SlashCommandBuilder()
+    .setName('docs')
+    .setDescription('Search the Docmost wiki (docs.wisejnrs.net)')
+    .addStringOption((option) =>
+      option.setName('query').setDescription('What to search for').setRequired(true),
+    ),
+  async execute(interaction) {
+    const query = interaction.options.getString('query', true);
+    await interaction.deferReply();
+    const pages = await docmostSearch(query);
+    if (!pages.length) {
+      await interaction.editReply(`No wiki pages found for "${query}".`);
+      return;
+    }
+    const lines = pages.slice(0, 6).map((page) => {
+      const title = page.title === 'Untitled' ? '(untitled page)' : page.title;
+      const excerpt = page.excerpt.replace(/\s+/g, ' ').slice(0, 140);
+      return `**[${title}](https://docs.wisejnrs.net/p/${page.id})**\n${excerpt}`;
+    });
+    const reply = lines.join('\n\n').slice(0, 2000);
+    await interaction.editReply(reply);
+    audit(interaction, query, `${pages.length} results`);
+  },
+};
+
+const imagine: Command = {
+  data: new SlashCommandBuilder()
+    .setName('imagine')
+    .setDescription('Generate an image (OpenAI gpt-image-1 or Gemini)')
+    .addStringOption((option) =>
+      option.setName('prompt').setDescription('Describe the image').setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('provider')
+        .setDescription('Image model to use')
+        .addChoices(
+          { name: 'OpenAI gpt-image-1', value: 'openai' },
+          { name: 'Gemini (nano banana)', value: 'gemini' },
+        ),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('size')
+        .setDescription('Image size (OpenAI only)')
+        .addChoices(
+          { name: 'Square 1024x1024', value: '1024x1024' },
+          { name: 'Wide 1536x1024', value: '1536x1024' },
+          { name: 'Tall 1024x1536', value: '1024x1536' },
+        ),
+    ),
+  async execute(interaction) {
+    const prompt = interaction.options.getString('prompt', true);
+    const providers = availableImageProviders();
+    if (!providers.length) {
+      await interaction.reply({
+        content: 'No image provider configured (need OPENAI_API_KEY or GEMINI_API_KEY).',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const provider = (interaction.options.getString('provider') ?? providers[0]) as ImageProvider;
+    if (!providers.includes(provider)) {
+      await interaction.reply({
+        content: `Provider "${provider}" is not configured on the server.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const size = (interaction.options.getString('size') ?? '1024x1024') as ImageSize;
+    await interaction.deferReply();
+    try {
+      const image = await generateImage(prompt, provider, size);
+      const caption = `**${prompt.slice(0, 500)}**` + (image.note ? `\n-# ${image.note.slice(0, 800)}` : '');
+      await interaction.editReply({
+        content: caption.slice(0, 2000),
+        files: [new AttachmentBuilder(image.buffer, { name: image.filename })],
+      });
+      audit(interaction, `${provider}: ${prompt}`, image.filename);
+    } catch (error) {
+      console.error('[imagine] failed:', error);
+      await interaction.editReply(
+        `Image generation failed: ${error instanceof Error ? error.message.slice(0, 300) : error}`,
+      );
+    }
+  },
+};
+
+export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine];
 export { ai };

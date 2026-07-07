@@ -51,7 +51,7 @@ Also included:
 2. `cp .env.example .env` and fill in `DISCORD_TOKEN` plus an API key
    (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` + `AI_PROVIDER=openai`).
 3. The YOLO model is not committed (43 MB, public repo). Copy it in:
-   `cp /work/wisejnrs-projects/attic/Carbon-Bot/Source/Carbon.Bot.Core/Resources/YoLo/yolov8s.onnx models/`
+   export one with `docker run --rm -v $PWD/models:/export -w /export ultralytics/ultralytics:latest-cpu yolo export model=yolo26s.pt format=onnx`
 4. Drop documents into `./corpus`, run `/corpus` in Discord to index them.
 5. Set `DISCORD_GUILD_ID` while testing — guild commands register instantly.
 

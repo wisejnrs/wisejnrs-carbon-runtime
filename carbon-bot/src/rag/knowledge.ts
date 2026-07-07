@@ -35,28 +35,45 @@ function getClient(): Promise<Client> {
   return clientPromise;
 }
 
-export async function knowledgeSearch(query: string, k = 6): Promise<SearchHit[]> {
-  if (!knowledgeConfigured()) return [];
+async function callKnowledgeTool<T>(name: string, args: Record<string, unknown>): Promise<T | null> {
+  if (!knowledgeConfigured()) return null;
   try {
     const client = await getClient();
-    const result = await client.callTool({
-      name: 'semantic_search',
-      arguments: { query, top_k: k },
-    });
+    const result = await client.callTool({ name, arguments: args });
     const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
     const text = content.find((item) => item.type === 'text')?.text;
-    if (!text) return [];
-    const parsed = JSON.parse(text) as { results?: KnowledgeResult[] };
-    return (parsed.results ?? [])
-      .filter((hit) => hit.snippet)
-      .map((hit) => ({
-        text: hit.snippet,
-        source: `${hit.topic}/${hit.filename}`,
-        score: hit.score,
-      }));
+    return text ? (JSON.parse(text) as T) : null;
   } catch (error) {
-    console.warn('[knowledge] search failed, will fall back to local store:', error);
+    console.warn(`[knowledge] ${name} failed:`, error);
     clientPromise = undefined; // drop the session; reconnect on the next query
-    return [];
+    return null;
   }
+}
+
+export async function knowledgeSearch(query: string, k = 6): Promise<SearchHit[]> {
+  const parsed = await callKnowledgeTool<{ results?: KnowledgeResult[] }>('semantic_search', {
+    query,
+    top_k: k,
+  });
+  return (parsed?.results ?? [])
+    .filter((hit) => hit.snippet)
+    .map((hit) => ({
+      text: hit.snippet,
+      source: `${hit.topic}/${hit.filename}`,
+      score: hit.score,
+    }));
+}
+
+export interface DocmostPage {
+  id: string;
+  title: string;
+  excerpt: string;
+}
+
+export async function docmostSearch(query: string): Promise<DocmostPage[]> {
+  const parsed = await callKnowledgeTool<{ results?: DocmostPage[] }>('docmost_search', { query });
+  return (parsed?.results ?? []).map((page) => ({
+    ...page,
+    excerpt: (page.excerpt ?? '').replace(/<\/?b>/g, '**'),
+  }));
 }

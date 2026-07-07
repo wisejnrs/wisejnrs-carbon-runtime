@@ -12,7 +12,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     DATA_DIR=/app/data \
     CORPUS_DIR=/app/corpus \
-    YOLO_MODEL_PATH=/app/models/yolov8s.onnx \
+    YOLO_MODEL_PATH=/app/models/yolo26s.onnx \
     HF_HOME=/app/data/hf-cache
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

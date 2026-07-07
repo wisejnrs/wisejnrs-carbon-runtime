@@ -50,7 +50,10 @@ export const config = {
   // Paths
   dataDir: process.env.DATA_DIR ?? path.join(rootDir, 'data'),
   corpusDir: process.env.CORPUS_DIR ?? path.join(rootDir, 'corpus'),
-  yoloModelPath: process.env.YOLO_MODEL_PATH ?? path.join(rootDir, 'models', 'yolov8s.onnx'),
+  yoloModelPath: process.env.YOLO_MODEL_PATH ?? path.join(rootDir, 'models', 'yolo26s.onnx'),
+
+  // Google Gemini API key for /imagine image generation (optional)
+  geminiApiKey: process.env.GEMINI_API_KEY,
 
   // Wise knowledge server MCP - remote corpus retrieval for /ask (optional)
   knowledgeMcpUrl: process.env.KNOWLEDGE_MCP_URL,
