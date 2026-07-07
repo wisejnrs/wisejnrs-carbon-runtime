@@ -55,6 +55,23 @@ Also included:
 4. Drop documents into `./corpus`, run `/corpus` in Discord to index them.
 5. Set `DISCORD_GUILD_ID` while testing — guild commands register instantly.
 
+## Google (Gmail + Calendar) MCP setup
+
+The bot host registers two user-scope MCP servers (`claude mcp add ... -s user`):
+`gmail` (`npx -y @gongrzhe/server-gmail-autoauth-mcp`) and `google-calendar`
+(`npx -y @cocal/google-calendar-mcp`, env `GOOGLE_OAUTH_CREDENTIALS` pointing at the
+OAuth client JSON). One-time OAuth, done in a browser logged into the target account:
+
+1. console.cloud.google.com → project → enable **Gmail API** + **Google Calendar API**
+   → OAuth consent screen (External/Testing, add the account as test user)
+   → Credentials → **OAuth client ID → Desktop app** → download JSON.
+2. Save it as `~/.gmail-mcp/gcp-oauth.keys.json` on the bot host.
+3. Run the consent flows (each opens a browser / prints a URL):
+   `npx -y @gongrzhe/server-gmail-autoauth-mcp auth`
+   `GOOGLE_OAUTH_CREDENTIALS=~/.gmail-mcp/gcp-oauth.keys.json npx -y @cocal/google-calendar-mcp auth`
+4. Restart the bot container. Token dirs `~/.gmail-mcp` and
+   `~/.config/google-calendar-mcp` are already mounted by docker-compose.
+
 ## Run
 
 ```bash
