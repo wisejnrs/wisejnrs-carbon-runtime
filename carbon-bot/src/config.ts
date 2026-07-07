@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 
-export type ProviderName = 'anthropic' | 'openai';
+export type ProviderName = 'anthropic' | 'openai' | 'claude-code';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -10,8 +10,10 @@ function required(name: string): string {
 }
 
 const provider = (process.env.AI_PROVIDER ?? 'anthropic').toLowerCase();
-if (provider !== 'anthropic' && provider !== 'openai') {
-  throw new Error(`AI_PROVIDER must be "anthropic" or "openai", got "${provider}"`);
+if (provider !== 'anthropic' && provider !== 'openai' && provider !== 'claude-code') {
+  throw new Error(
+    `AI_PROVIDER must be "anthropic", "openai" or "claude-code", got "${provider}"`,
+  );
 }
 
 const rootDir = process.cwd();
@@ -24,6 +26,8 @@ export const config = {
   provider: provider as ProviderName,
   anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8',
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o',
+  // "default" inherits whatever model the local Claude Code login uses.
+  claudeCodeModel: process.env.CLAUDE_CODE_MODEL ?? 'default',
   systemPrompt:
     process.env.SYSTEM_PROMPT ??
     'You are Carbon, a helpful Discord bot. Keep answers concise - Discord messages are limited to 2000 characters.',
@@ -32,6 +36,11 @@ export const config = {
 
   // Requires the privileged "Message Content" intent in the Discord developer portal.
   enableMentionChat: process.env.ENABLE_MENTION_CHAT === 'true',
+  // Channels (names or IDs, comma-separated) where the bot replies to every message.
+  chatChannels: (process.env.CHAT_CHANNELS ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase().replace(/^#/, ''))
+    .filter(Boolean),
 
   // Paths
   dataDir: process.env.DATA_DIR ?? path.join(rootDir, 'data'),

@@ -22,7 +22,12 @@ export function startHealthServer(client: Client): http.Server {
             uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
             guilds: client.guilds.cache.size,
             provider: config.provider,
-            model: config.provider === 'openai' ? config.openaiModel : config.anthropicModel,
+            model:
+              config.provider === 'openai'
+                ? config.openaiModel
+                : config.provider === 'claude-code'
+                  ? config.claudeCodeModel
+                  : config.anthropicModel,
             corpusChunks: await corpusCount(),
             historyEntries: historyCount(),
           },

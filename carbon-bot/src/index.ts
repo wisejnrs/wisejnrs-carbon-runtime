@@ -6,8 +6,10 @@ import { askWithRag } from './rag/index.js';
 import { startHealthServer } from './health.js';
 import { logHistory } from './db/history.js';
 
+const chatEnabled = config.enableMentionChat || config.chatChannels.length > 0;
+
 const intents = [GatewayIntentBits.Guilds];
-if (config.enableMentionChat) {
+if (chatEnabled) {
   // Both require the privileged Message Content intent in the developer portal.
   intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
 }
@@ -17,6 +19,9 @@ const commandMap = new Map(commands.map((command) => [command.data.name, command
 
 client.once(Events.ClientReady, async (ready) => {
   console.log(`Logged in as ${ready.user.tag}`);
+  console.log(
+    `Chat: mentions=${config.enableMentionChat}, channels=[${config.chatChannels.join(', ') || 'none'}]`,
+  );
   const data = commands.map((command) => command.data.toJSON());
   if (config.guildId) {
     const guild = await ready.guilds.fetch(config.guildId);
@@ -50,12 +55,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Successor to the old CommandHandlingService mention path: @mention the bot to chat.
-if (config.enableMentionChat) {
+// Successor to the old CommandHandlingService: @mention the bot anywhere to chat,
+// and in CHAT_CHANNELS the bot replies to every message without needing a mention.
+if (chatEnabled) {
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !client.user) return;
-    if (!message.mentions.has(client.user)) return;
-    const content = message.content.replaceAll(`<@${client.user.id}>`, '').trim();
+    const channelName =
+      'name' in message.channel && typeof message.channel.name === 'string'
+        ? message.channel.name.toLowerCase()
+        : '';
+    const isChatChannel =
+      config.chatChannels.includes(message.channelId) ||
+      config.chatChannels.includes(channelName);
+    // Match direct user mentions, nickname mentions, and the bot's managed role.
+    const isMention =
+      config.enableMentionChat &&
+      (message.mentions.users.has(client.user.id) ||
+        message.mentions.roles.some((role) => role.tags?.botId === client.user?.id));
+    console.log(
+      `[chat] ${message.author.tag} in #${channelName || message.channelId}: ` +
+        `chatChannel=${isChatChannel} mention=${isMention}`,
+    );
+    if (!isChatChannel && !isMention) return;
+    const content = message.content
+      .replaceAll(`<@${client.user.id}>`, '')
+      .replaceAll(`<@!${client.user.id}>`, '')
+      .replace(/<@&\d+>/g, '')
+      .trim();
     if (!content) return;
     try {
       await message.channel.sendTyping();
@@ -68,7 +94,7 @@ if (config.enableMentionChat) {
         userTag: message.author.tag,
         guildId: message.guildId,
         channelId: message.channelId,
-        command: 'mention',
+        command: isMention ? 'mention' : 'chat',
         input: content,
         output: answer.slice(0, 4000),
       });

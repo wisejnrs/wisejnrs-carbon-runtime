@@ -19,6 +19,8 @@ Also included:
 
 - **Mention chat** (`ENABLE_MENTION_CHAT=true`) — @mention the bot to chat, RAG-grounded.
   Requires the privileged *Message Content* intent in the developer portal.
+- **Chat channels** (`CHAT_CHANNELS=mrroboto`) — channels (names or IDs) where the bot
+  replies to *every* message, no mention needed. Same intent requirement.
 - **History audit DB** — every command is logged to SQLite (`data/carbon-bot.db`), the port
   of the old `History` entity.
 - **Health server** — `GET /ping` and `GET /status` (JSON: uptime, guilds, corpus size,
@@ -27,8 +29,10 @@ Also included:
 ## Architecture
 
 - **discord.js v14** on Node 22, TypeScript, ESM.
-- **AI providers** (`src/ai/`): Anthropic (`claude-opus-4-8`, adaptive thinking) or OpenAI
-  (`gpt-4o`), selected by `AI_PROVIDER`.
+- **AI providers** (`src/ai/`): Anthropic (`claude-opus-4-8`, adaptive thinking), OpenAI
+  (`gpt-4o`), or `claude-code` — the Claude Agent SDK driving the machine's authenticated
+  Claude Code CLI (subscription login, no API key; tools disabled, one turn per reply).
+  Selected by `AI_PROVIDER`.
 - **RAG** (`src/rag/`): local **bge-small-en-v1.5** embeddings via transformers.js (same
   model as the Wise corpus pipeline — no API key needed, downloads once to `data/hf-cache`),
   vectors in embedded **LanceDB** (`data/lancedb`). Ingests `.txt/.md/.html/.csv/.json/.pdf`

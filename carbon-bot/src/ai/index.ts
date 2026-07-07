@@ -1,14 +1,20 @@
 import { config } from '../config.js';
 import { AnthropicProvider } from './anthropic.js';
 import { OpenAiProvider } from './openai.js';
+import { ClaudeCodeProvider } from './claudeCode.js';
 import type { AiProvider, ChatMessage } from './provider.js';
 
 export type { AiProvider, ChatMessage };
 
 export function createProvider(): AiProvider {
-  return config.provider === 'openai'
-    ? new OpenAiProvider(config.openaiModel)
-    : new AnthropicProvider(config.anthropicModel);
+  switch (config.provider) {
+    case 'openai':
+      return new OpenAiProvider(config.openaiModel);
+    case 'claude-code':
+      return new ClaudeCodeProvider(config.claudeCodeModel);
+    default:
+      return new AnthropicProvider(config.anthropicModel);
+  }
 }
 
 // Per-channel conversation memory, capped so long-lived channels don't grow unbounded.
