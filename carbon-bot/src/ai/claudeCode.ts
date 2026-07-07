@@ -22,8 +22,8 @@ export class ClaudeCodeProvider implements AiProvider {
       options: {
         systemPrompt: system,
         model: this.model === 'default' ? undefined : this.model,
-        allowedTools: [],
-        maxTurns: 1,
+        tools: [], // no built-in tools: Discord chat must never touch this machine
+        maxTurns: 8, // headroom for internal steps; with no tools it can't act anyway
         cwd: config.dataDir,
       },
     })) {
