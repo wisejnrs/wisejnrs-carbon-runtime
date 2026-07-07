@@ -23,8 +23,13 @@ client.once(Events.ClientReady, async (ready) => {
     await guild.commands.set(data);
     console.log(`Registered ${data.length} commands in guild ${guild.name}`);
   } else {
-    await ready.application.commands.set(data);
-    console.log(`Registered ${data.length} commands globally`);
+    // Guild registration is instant; global registration can take up to an hour.
+    for (const [, guild] of await ready.guilds.fetch()) {
+      const full = await guild.fetch();
+      await full.commands.set(data);
+      console.log(`Registered ${data.length} commands in guild ${full.name}`);
+    }
+    if (!ready.guilds.cache.size) console.log('Bot is not in any guilds yet - invite it first.');
   }
 });
 
