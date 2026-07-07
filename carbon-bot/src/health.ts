@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { Client } from 'discord.js';
 import { config } from './config.js';
-import { corpusCount } from './rag/index.js';
+import { corpusCount, knowledgeConfigured } from './rag/index.js';
 import { historyCount } from './db/history.js';
 
 // Minimal web surface replacing the old Carbon.Bot.Web portal: /ping and /status.
@@ -28,6 +28,7 @@ export function startHealthServer(client: Client): http.Server {
                 : config.provider === 'claude-code'
                   ? config.claudeCodeModel
                   : config.anthropicModel,
+            knowledgeServer: knowledgeConfigured(),
             corpusChunks: await corpusCount(),
             historyEntries: historyCount(),
           },

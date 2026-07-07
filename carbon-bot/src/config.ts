@@ -47,6 +47,10 @@ export const config = {
   corpusDir: process.env.CORPUS_DIR ?? path.join(rootDir, 'corpus'),
   yoloModelPath: process.env.YOLO_MODEL_PATH ?? path.join(rootDir, 'models', 'yolov8s.onnx'),
 
+  // Wise knowledge server MCP - remote corpus retrieval for /ask (optional)
+  knowledgeMcpUrl: process.env.KNOWLEDGE_MCP_URL,
+  knowledgeMcpKey: process.env.KNOWLEDGE_MCP_KEY,
+
   // Google Drive corpus source (optional; local corpusDir always works)
   googleDriveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
   googleClientEmail: process.env.GOOGLE_CLIENT_EMAIL,

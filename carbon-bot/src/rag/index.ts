@@ -1,20 +1,25 @@
 import { config } from '../config.js';
 import type { AiProvider, ChatMessage } from '../ai/index.js';
 import { embedOne } from './embeddings.js';
-import { search } from './store.js';
+import { search, type SearchHit } from './store.js';
+import { knowledgeConfigured, knowledgeSearch } from './knowledge.js';
 
 export { ingestCorpus } from './ingest.js';
 export { corpusCount } from './store.js';
+export { knowledgeConfigured } from './knowledge.js';
 
-// RAG-grounded ask: retrieve relevant corpus chunks and hand them to the model
-// as context, like the old Kernel Memory AskAsync path. Falls back to plain
-// chat when the corpus is empty.
+// RAG-grounded ask: retrieve relevant corpus passages and hand them to the model
+// as context. Retrieval prefers the remote knowledge server (full Wise corpus,
+// already indexed); the local LanceDB store is the fallback. Falls back to plain
+// chat when both are empty.
 export async function askWithRag(
   provider: AiProvider,
   history: ChatMessage[],
   question: string,
 ): Promise<{ answer: string; sources: string[] }> {
-  const hits = await search(await embedOne(question), 5);
+  let hits: SearchHit[] = [];
+  if (knowledgeConfigured()) hits = await knowledgeSearch(question, 6);
+  if (!hits.length) hits = await search(await embedOne(question), 5);
 
   let system = config.systemPrompt;
   const sources = [...new Set(hits.map((hit) => hit.source))];

@@ -33,10 +33,12 @@ Also included:
   (`gpt-4o`), or `claude-code` — the Claude Agent SDK driving the machine's authenticated
   Claude Code CLI (subscription login, no API key; tools disabled, one turn per reply).
   Selected by `AI_PROVIDER`.
-- **RAG** (`src/rag/`): local **bge-small-en-v1.5** embeddings via transformers.js (same
-  model as the Wise corpus pipeline — no API key needed, downloads once to `data/hf-cache`),
-  vectors in embedded **LanceDB** (`data/lancedb`). Ingests `.txt/.md/.html/.csv/.json/.pdf`
-  from `./corpus`, plus Google Docs/PDFs/text from a Drive folder via service account.
+- **RAG** (`src/rag/`): retrieval prefers the **Wise knowledge server** when
+  `KNOWLEDGE_MCP_URL`/`KNOWLEDGE_MCP_KEY` are set — an MCP `semantic_search` call against
+  the already-indexed corpus. Fallback is the local store: **bge-small-en-v1.5**
+  embeddings via transformers.js (no API key, downloads once to `data/hf-cache`) in
+  embedded **LanceDB** (`data/lancedb`), fed by `/corpus` from `.txt/.md/.html/.csv/.json/.pdf`
+  files in `./corpus` plus Google Docs/PDFs/text from a Drive folder via service account.
 - **YOLO** (`src/yolo/`): `models/yolov8s.onnx` (carried over from the .NET bot) on
   onnxruntime-node; letterboxed preprocessing with sharp, NMS, SVG-composited boxes.
 
