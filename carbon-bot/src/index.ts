@@ -1,4 +1,6 @@
 import path from 'node:path';
+import nodePath from 'node:path';
+import fs from 'node:fs/promises';
 import { AttachmentBuilder, Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
 import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
@@ -12,15 +14,45 @@ import { startWhatsApp } from './whatsapp.js';
 import { setDiscordClient } from './discordTools.js';
 import { logHistory } from './db/history.js';
 
-// A Discord voice note is an audio attachment; transcribe it so the rest of
-// the pipeline can treat it as text. Returns null when the message has none.
+// Transcribe every audio attachment on a message (voice notes AND uploaded
+// voicemail files), so someone can dump several recordings at once. Returns
+// the combined transcript, or null when there's no audio.
 async function voiceToText(message: import('discord.js').Message): Promise<string | null> {
-  const audio = message.attachments.find((a) => a.contentType?.startsWith('audio/'));
-  if (!audio || !voiceAvailable()) return null;
-  const buffer = Buffer.from(await (await fetch(audio.url)).arrayBuffer());
-  const transcript = await transcribeAudio(buffer, audio.name ?? 'voice.ogg');
-  console.log(`[voice] transcribed ${Math.round(buffer.length / 1024)}KB -> "${transcript.slice(0, 80)}"`);
-  return transcript || null;
+  const clips = [...message.attachments.values()].filter((a) => a.contentType?.startsWith('audio/'));
+  if (!clips.length || !voiceAvailable()) return null;
+  const parts: string[] = [];
+  for (const clip of clips) {
+    try {
+      const buffer = Buffer.from(await (await fetch(clip.url)).arrayBuffer());
+      const transcript = await transcribeAudio(buffer, clip.name ?? 'voice.ogg');
+      if (transcript) parts.push(clips.length > 1 ? `[${clip.name ?? 'clip'}] ${transcript}` : transcript);
+      console.log(`[voice] transcribed ${Math.round(buffer.length / 1024)}KB -> "${transcript.slice(0, 60)}"`);
+    } catch (error) {
+      console.warn('[voice] transcription failed for', clip.name, error);
+    }
+  }
+  return parts.length ? parts.join('\n\n') : null;
+}
+
+// Save attached images into <repo>/design-inbox/ so a dev session can Read them
+// as visual input (wireframes, sketches, diagrams, screenshots).
+async function saveImages(
+  message: import('discord.js').Message,
+  repoPath: string,
+): Promise<string[]> {
+  const images = [...message.attachments.values()].filter((a) => a.contentType?.startsWith('image/'));
+  if (!images.length) return [];
+  const dir = nodePath.join(repoPath, 'design-inbox');
+  await fs.mkdir(dir, { recursive: true });
+  const saved: string[] = [];
+  for (const image of images) {
+    const safe = (image.name ?? 'image.png').replace(/[^\w.\-]/g, '_');
+    const dest = nodePath.join(dir, `${Date.now()}-${safe}`);
+    await fs.writeFile(dest, Buffer.from(await (await fetch(image.url)).arrayBuffer()));
+    saved.push(dest);
+    console.log(`[dev] saved design image ${safe} (${Math.round(image.size / 1024)}KB)`);
+  }
+  return saved;
 }
 
 const chatEnabled =
@@ -96,7 +128,17 @@ if (chatEnabled) {
     const repoPath = repoForChannel(channelName);
     if (repoPath) {
       let task = message.content.trim();
-      if (!task) task = (await voiceToText(message).catch(() => null)) ?? '';
+      // Fold in any attached voicemails/voice notes alongside typed text.
+      const spoken = await voiceToText(message).catch(() => null);
+      if (spoken) task = [task, spoken].filter(Boolean).join('\n\n');
+      // Save attached images (diagrams, sketches, screenshots) into the repo and
+      // point the session at them - Claude's Read tool sees images as design input.
+      const savedImages = await saveImages(message, repoPath).catch(() => [] as string[]);
+      if (savedImages.length) {
+        task =
+          `${task}\n\n[Design image(s) attached: ${savedImages.join(', ')}. ` +
+          `View each with the Read tool and use them as the design/spec to build from.]`.trim();
+      }
       if (!task) return;
       if (task === '!reset') {
         const had = resetDevSession(message.channelId);
