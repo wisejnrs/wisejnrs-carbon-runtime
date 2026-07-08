@@ -1,8 +1,9 @@
 import path from 'node:path';
-import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { AttachmentBuilder, Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
 import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
 import { createProgressDisplay, runGroundedChat, replyFooter } from './chat.js';
+import { getHistory } from './ai/index.js';
 import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
@@ -28,9 +29,11 @@ const intents = [GatewayIntentBits.Guilds];
 if (chatEnabled) {
   // Both require the privileged Message Content intent in the developer portal.
   intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
+  intents.push(GatewayIntentBits.GuildMessageReactions); // react to react (👍 / 🔁 / 🗑️)
 }
 
-const client = new Client({ intents });
+// Partials so reactions on messages not in cache still fire the event.
+const client = new Client({ intents, partials: [Partials.Message, Partials.Reaction, Partials.Channel] });
 const commandMap = new Map(commands.map((command) => [command.data.name, command]));
 
 client.once(Events.ClientReady, async (ready) => {
@@ -109,12 +112,15 @@ if (chatEnabled) {
         const reply = await devChat(message.channelId, repoPath, task, display.onNote).finally(
           () => display.finish(),
         );
+        const attachments = reply.files.map(
+          (file) => new AttachmentBuilder(file, { name: path.basename(file) }),
+        );
         // Final as a fresh message (OpenClaw pattern) so the channel shows unread.
         await placeholder.delete().catch(() => {});
-        await message.reply(reply.slice(0, 2000));
-        if (reply.length > 2000 && 'send' in message.channel) {
-          for (let i = 2000; i < reply.length; i += 1990) {
-            await message.channel.send(reply.slice(i, i + 1990));
+        await message.reply({ content: reply.text.slice(0, 2000), files: attachments });
+        if (reply.text.length > 2000 && 'send' in message.channel) {
+          for (let i = 2000; i < reply.text.length; i += 1990) {
+            await message.channel.send(reply.text.slice(i, i + 1990));
           }
         }
         logHistory({
@@ -124,7 +130,7 @@ if (chatEnabled) {
           channelId: message.channelId,
           command: 'dev',
           input: task,
-          output: reply.slice(0, 4000),
+          output: reply.text.slice(0, 4000),
         });
         void message.reactions.cache.get('👀')?.users.remove(client.user.id).catch(() => {});
         void message.react('✅').catch(() => {});
@@ -198,6 +204,45 @@ if (chatEnabled) {
     } catch (error) {
       console.error('[mention] AI request failed:', error);
       void message.react('❌').catch(() => {});
+    }
+  });
+}
+
+// React to a message the bot sent to control it:
+//   🗑️ delete it · 🔊 hear it as a voice message · ♻️/🔁 regenerate the answer
+if (chatEnabled) {
+  client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    try {
+      if (user.bot || !client.user) return;
+      if (reaction.partial) await reaction.fetch();
+      const msg = reaction.message.partial ? await reaction.message.fetch() : reaction.message;
+      if (msg.author?.id !== client.user.id) return; // only react to our own messages
+      const emoji = reaction.emoji.name;
+
+      if (emoji === '🗑️' || emoji === '🗑') {
+        await msg.delete().catch(() => {});
+      } else if (emoji === '🔊' && config.voiceReplies && voiceAvailable() && msg.content) {
+        await sendVoiceReply(msg.channelId, speechify(msg.content)).catch((e) =>
+          console.warn('[voice] reaction reply failed:', e),
+        );
+      } else if ((emoji === '♻️' || emoji === '🔁') && 'send' in msg.channel) {
+        // Regenerate: re-run the user's previous turn in this channel.
+        const prior = getHistory(msg.channelId);
+        const lastUser = [...prior].reverse().find((m) => m.role === 'user');
+        if (!lastUser) return;
+        const placeholder = await msg.channel.send('♻️ Regenerating…');
+        const regen = await runGroundedChat(ai, msg.channelId, lastUser.content, (status) =>
+          placeholder.edit(status),
+        );
+        await placeholder.delete().catch(() => {});
+        await msg.channel.send({
+          content: (regen.answer + replyFooter(regen)).slice(0, 2000),
+          files: regen.attachments,
+        });
+        await regen.cleanup();
+      }
+    } catch (error) {
+      console.warn('[reactions] handler failed:', error);
     }
   });
 }

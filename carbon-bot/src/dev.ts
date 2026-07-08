@@ -44,12 +44,50 @@ export function resetDevSession(channelId: string): boolean {
   return clearDevSession(channelId);
 }
 
+// Deliverable artifact types worth attaching to Discord after a dev turn.
+const DELIVERABLE = new Set([
+  '.pdf', '.epub', '.mobi', '.docx', '.pptx', '.xlsx', '.csv',
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.zip', '.html',
+]);
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'attic', '.next', 'vendor']);
+const MAX_ATTACH_BYTES = 9 * 1024 * 1024;
+
+// Files the session created/modified during this turn (by mtime), so build
+// outputs (a PDF, an EPUB) get attached to the Discord reply automatically.
+async function collectArtifacts(repoPath: string, since: number): Promise<string[]> {
+  const found: string[] = [];
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 6 || found.length >= 10) return;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (found.length >= 10) return;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) await walk(full, depth + 1);
+      } else if (DELIVERABLE.has(path.extname(entry.name).toLowerCase())) {
+        const stat = await fs.promises.stat(full).catch(() => null);
+        if (stat && stat.mtimeMs >= since && stat.size > 0 && stat.size <= MAX_ATTACH_BYTES) {
+          found.push(full);
+        }
+      }
+    }
+  }
+  await walk(repoPath, 0);
+  return found;
+}
+
+export interface DevResult {
+  text: string;
+  files: string[];
+}
+
 export async function devChat(
   channelId: string,
   repoPath: string,
   prompt: string,
   onProgress?: ChatProgress,
-): Promise<string> {
+): Promise<DevResult> {
+  const startedAt = Date.now() - 2000; // small clock-skew buffer
   const options: Options = {
     cwd: repoPath,
     model: config.claudeCodeModel === 'default' ? undefined : config.claudeCodeModel,
@@ -81,5 +119,5 @@ export async function devChat(
           : `Session ended without an answer (${message.subtype}). Try again or send !reset.`;
     }
   }
-  return result || '(no response)';
+  return { text: result || '(no response)', files: await collectArtifacts(repoPath, startedAt) };
 }
