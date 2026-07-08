@@ -66,6 +66,18 @@ function getDb(): Database.Database {
         date TEXT PRIMARY KEY,
         summary TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS wa_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        msg_id TEXT UNIQUE,
+        jid TEXT NOT NULL,
+        chat_name TEXT,
+        sender TEXT,
+        from_me INTEGER NOT NULL DEFAULT 0,
+        text TEXT NOT NULL,
+        ts INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_wa_jid_ts ON wa_messages(jid, ts DESC);
+      CREATE INDEX IF NOT EXISTS idx_wa_ts ON wa_messages(ts DESC);
     `);
   }
   return db;
@@ -316,6 +328,77 @@ export function appendDiary(date: string, summary: string): void {
       .prepare('INSERT INTO dream_diary (date, summary) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET summary = excluded.summary')
       .run(date, summary.slice(0, 2000));
   } catch { /* non-fatal */ }
+}
+
+export interface WaMessage {
+  jid: string;
+  chat_name: string | null;
+  sender: string | null;
+  from_me: number;
+  text: string;
+  ts: number;
+}
+
+export function insertWaMessage(m: {
+  msgId: string | null;
+  jid: string;
+  chatName: string | null;
+  sender: string | null;
+  fromMe: boolean;
+  text: string;
+  ts: number;
+}): void {
+  try {
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO wa_messages (msg_id, jid, chat_name, sender, from_me, text, ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(m.msgId, m.jid, m.chatName, m.sender, m.fromMe ? 1 : 0, m.text.slice(0, 2000), m.ts);
+    if (Math.random() < 0.01) {
+      getDb().prepare(`DELETE FROM wa_messages WHERE ts < ?`).run(Date.now() - 30 * 24 * 3600 * 1000);
+    }
+  } catch { /* non-fatal */ }
+}
+
+export function waRecentChats(limit = 20): Array<WaMessage & { messages: number }> {
+  try {
+    return getDb()
+      .prepare(
+        `SELECT jid, chat_name, sender, from_me, text, MAX(ts) AS ts, COUNT(*) AS messages
+         FROM wa_messages GROUP BY jid ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(limit) as Array<WaMessage & { messages: number }>;
+  } catch {
+    return [];
+  }
+}
+
+export function waMessagesFor(chat: string, limit = 40): WaMessage[] {
+  try {
+    return getDb()
+      .prepare(
+        `SELECT jid, chat_name, sender, from_me, text, ts FROM wa_messages
+         WHERE jid = ? OR jid LIKE ? OR chat_name LIKE ? OR sender LIKE ?
+         ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(chat, `%${chat.replace(/[^\d]/g, '') || chat}%`, `%${chat}%`, `%${chat}%`, limit) as WaMessage[];
+  } catch {
+    return [];
+  }
+}
+
+export function waSearch(query: string, limit = 30): WaMessage[] {
+  try {
+    return getDb()
+      .prepare(
+        `SELECT jid, chat_name, sender, from_me, text, ts FROM wa_messages
+         WHERE text LIKE ? ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(`%${query}%`, limit) as WaMessage[];
+  } catch {
+    return [];
+  }
 }
 
 export function historyCount(): number {
