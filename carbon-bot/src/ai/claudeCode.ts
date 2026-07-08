@@ -5,6 +5,7 @@ import type { AiProvider, ChatMessage, ChatProgress, ChatResult } from './provid
 import { config } from '../config.js';
 import { userMcpServers } from '../mcp.js';
 import { whatsappMcpServer } from '../waTools.js';
+import { discordMcpServer } from '../discordTools.js';
 
 // Routes chat through the local Claude Code CLI, so answers use the machine's
 // existing Claude login (subscription) instead of a metered API key.
@@ -51,6 +52,7 @@ export class ClaudeCodeProvider implements AiProvider {
         options.mcpServers = {
           ...(userMcpServers ?? {}),
           ...(config.whatsappEnabled ? { whatsapp: whatsappMcpServer } : {}),
+          discord: discordMcpServer,
         };
         options.maxTurns = 40;
         options.systemPrompt =
@@ -61,6 +63,8 @@ export class ClaudeCodeProvider implements AiProvider {
             ? '\n\nYou have WhatsApp tools (wa_recent_chats, wa_messages, wa_search, wa_send) ' +
               'for the user\'s linked personal account - use them for anything WhatsApp-related.'
             : '') +
+          '\n\nYou have Discord tools (discord_channels, discord_read, discord_search, ' +
+          'discord_post) for this server - use them to catch up on or post to other channels.' +
           (config.extraContext ? `\n\n${config.extraContext}` : '');
         break;
       case 'readonly':

@@ -9,6 +9,7 @@ import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
 import { sendVoiceReply, speechify, transcribeAudio, voiceAvailable } from './voice.js';
 import { startWhatsApp } from './whatsapp.js';
+import { setDiscordClient } from './discordTools.js';
 import { logHistory } from './db/history.js';
 
 // A Discord voice note is an audio attachment; transcribe it so the rest of
@@ -42,6 +43,7 @@ client.once(Events.ClientReady, async (ready) => {
     activities: [{ name: 'your life 🤖', type: 3 /* Watching */ }],
     status: 'online',
   });
+  setDiscordClient(client);
   startProactive(client);
   void startWhatsApp(client).catch((error) => console.error('[whatsapp] start failed:', error));
   console.log(
