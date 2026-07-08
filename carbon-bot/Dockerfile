@@ -14,7 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
     && rm -rf /var/lib/apt/lists/* \
     && git config --system user.name "MrRoboto" \
     && git config --system user.email "mrroboto@wisejnrs.net" \
-    && git config --system --add safe.directory '*'
+    && git config --system --add safe.directory '*' \
+    # Pre-install MCP servers so sessions never cold-download them via npx
+    && npm install -g @gongrzhe/server-gmail-autoauth-mcp @cocal/google-calendar-mcp
 ENV NODE_ENV=production \
     DATA_DIR=/app/data \
     CORPUS_DIR=/app/corpus \
