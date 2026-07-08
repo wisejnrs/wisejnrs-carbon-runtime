@@ -383,6 +383,7 @@ services:
       - ~/.claude:/home/node/.claude           # Claude Code login for the claude-code provider (rw: token refresh)
       - ~/.claude.json:/home/node/.claude-host.json:ro   # user-scope MCP servers for dev sessions
       - /work/wisejnrs-projects:/work/wisejnrs-projects  # channel-per-repo dev workspaces
+      - ~/.config/gh:/home/node/.config/gh               # gh CLI login for PRs from dev channels
       - ~/.gmail-mcp:/home/node/.gmail-mcp               # Gmail MCP OAuth keys + tokens
       - ~/.config/google-calendar-mcp:/home/node/.config/google-calendar-mcp  # Calendar MCP tokens
       - /data/NAS:/data/NAS                              # SAN Wise share (rw)

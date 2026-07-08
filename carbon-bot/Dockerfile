@@ -9,13 +9,29 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-# git for channel-per-repo dev sessions; identity for commits made by the bot
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates ffmpeg \
+# Dev toolkit for channel-per-repo sessions (tc-runtime-informed:
+# compatibility > size): build tools, python+uv, gh, search tools, ffmpeg
+# for voice. Bot git identity for commits made from Discord.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git ca-certificates ffmpeg curl gnupg \
+      jq ripgrep fd-find bat \
+      build-essential pkg-config \
+      python3 python3-pip python3-venv python-is-python3 \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system user.name "MrRoboto" \
     && git config --system user.email "mrroboto@wisejnrs.net" \
-    && git config --system --add safe.directory '*' \
-    # Pre-install MCP servers so sessions never cold-download them via npx
+    && git config --system --add safe.directory '*'
+# GitHub CLI (repo mounts + a mounted ~/.config/gh give dev sessions PR powers)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+# uv (python toolchain), pnpm/yarn shims, pre-installed MCP servers
+RUN curl -fsSL https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh \
+    && corepack enable \
     && npm install -g @gongrzhe/server-gmail-autoauth-mcp @cocal/google-calendar-mcp
 ENV NODE_ENV=production \
     DATA_DIR=/app/data \
