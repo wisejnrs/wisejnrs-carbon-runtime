@@ -393,6 +393,14 @@ services:
       - REPO_ROOT=/work/wisejnrs-projects
       - GOOGLE_OAUTH_CREDENTIALS=/home/node/.gmail-mcp/gcp-oauth.keys.json
       - TZ=Australia/Brisbane
+    # GPU for dev sessions (CUDA python via uv, model experiments)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
     # No carbon-network: the bot only needs outbound internet + port 8300,
     # and the pinned 172.20/16 subnet can collide with other stacks.
