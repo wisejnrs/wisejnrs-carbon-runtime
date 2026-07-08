@@ -6,7 +6,19 @@ import { createProgressDisplay, runGroundedChat, replyFooter } from './chat.js';
 import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
+import { sendVoiceReply, speechify, transcribeAudio, voiceAvailable } from './voice.js';
 import { logHistory } from './db/history.js';
+
+// A Discord voice note is an audio attachment; transcribe it so the rest of
+// the pipeline can treat it as text. Returns null when the message has none.
+async function voiceToText(message: import('discord.js').Message): Promise<string | null> {
+  const audio = message.attachments.find((a) => a.contentType?.startsWith('audio/'));
+  if (!audio || !voiceAvailable()) return null;
+  const buffer = Buffer.from(await (await fetch(audio.url)).arrayBuffer());
+  const transcript = await transcribeAudio(buffer, audio.name ?? 'voice.ogg');
+  console.log(`[voice] transcribed ${Math.round(buffer.length / 1024)}KB -> "${transcript.slice(0, 80)}"`);
+  return transcript || null;
+}
 
 const chatEnabled =
   config.enableMentionChat || config.chatChannels.length > 0 || devChannelsAvailable();
@@ -76,8 +88,9 @@ if (chatEnabled) {
     // Channel-per-repo development takes precedence over plain chat.
     const repoPath = repoForChannel(channelName);
     if (repoPath) {
-      const task = message.content.trim();
-      if (!task || message.author.bot) return;
+      let task = message.content.trim();
+      if (!task) task = (await voiceToText(message).catch(() => null)) ?? '';
+      if (!task) return;
       if (task === '!reset') {
         const had = resetDevSession(message.channelId);
         await message.reply(had ? '🔄 Session reset - next message starts fresh.' : 'No active session.');
@@ -134,12 +147,21 @@ if (chatEnabled) {
         `chatChannel=${isChatChannel} mention=${isMention}`,
     );
     if (!isChatChannel && !isMention) return;
-    const content = message.content
+    let content = message.content
       .replaceAll(`<@${client.user.id}>`, '')
       .replaceAll(`<@!${client.user.id}>`, '')
       .replace(/<@&\d+>/g, '')
       .trim();
-    if (!content) return;
+    let wasVoice = false;
+    if (!content) {
+      const transcript = await voiceToText(message).catch((error) => {
+        console.warn('[voice] transcription failed:', error);
+        return null;
+      });
+      if (!transcript) return;
+      content = transcript;
+      wasVoice = true;
+    }
     void message.react('👀').catch(() => {});
     try {
       const placeholder = await message.reply('⚙️ Working…');
@@ -156,12 +178,17 @@ if (chatEnabled) {
         }
       }
       await reply.cleanup();
+      if (wasVoice && config.voiceReplies && voiceAvailable()) {
+        void sendVoiceReply(message.channelId, speechify(reply.answer)).catch((error) =>
+          console.warn('[voice] reply failed:', error),
+        );
+      }
       logHistory({
         userId: message.author.id,
         userTag: message.author.tag,
         guildId: message.guildId,
         channelId: message.channelId,
-        command: isMention ? 'mention' : 'chat',
+        command: wasVoice ? 'voice' : isMention ? 'mention' : 'chat',
         input: content,
         output: reply.answer.slice(0, 4000),
       });

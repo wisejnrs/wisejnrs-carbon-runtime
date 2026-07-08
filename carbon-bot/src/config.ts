@@ -75,6 +75,12 @@ export const config = {
   // Health/status HTTP server
   healthPort: Number(process.env.HEALTH_PORT ?? 8300),
 
+  // Voice messages (needs OPENAI_API_KEY for Whisper STT + TTS)
+  voiceReplies: process.env.VOICE_REPLIES !== 'false',
+  sttModel: process.env.STT_MODEL ?? 'whisper-1',
+  ttsModel: process.env.TTS_MODEL ?? 'tts-1',
+  ttsVoice: process.env.TTS_VOICE ?? 'onyx',
+
   // Proactive features (claude-code provider only)
   commitmentsEnabled: process.env.COMMITMENTS !== 'false',
   commitmentsModel: process.env.COMMITMENTS_MODEL ?? 'claude-haiku-4-5',
