@@ -74,4 +74,12 @@ export const config = {
 
   // Health/status HTTP server
   healthPort: Number(process.env.HEALTH_PORT ?? 8300),
+
+  // Proactive features (claude-code provider only)
+  commitmentsEnabled: process.env.COMMITMENTS !== 'false',
+  commitmentsModel: process.env.COMMITMENTS_MODEL ?? 'claude-haiku-4-5',
+  maxCheckinsPerDay: Number(process.env.MAX_CHECKINS_PER_DAY ?? 6),
+  briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
+  briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables
+  briefingLocation: process.env.BRIEFING_LOCATION ?? 'Brisbane',
 };

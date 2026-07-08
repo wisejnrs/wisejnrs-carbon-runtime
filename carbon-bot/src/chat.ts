@@ -5,6 +5,8 @@ import { config } from './config.js';
 import type { AiProvider, ChatProgress } from './ai/index.js';
 import { getHistory, pushHistory } from './ai/index.js';
 import { askWithRag, type RagAnswer } from './rag/index.js';
+import { scheduleExtraction } from './commitments.js';
+import { drainSystemEvents, untrustedBlock } from './events.js';
 
 // Discord's default upload cap is 10MB; stay under it, and at most 10 attachments.
 const MAX_ATTACHMENT_BYTES = 9 * 1024 * 1024;
@@ -75,13 +77,18 @@ export async function runGroundedChat(
     // the corpus themselves when relevant; stuffing retrieved excerpts into
     // every question just pollutes unrelated answers with bogus "sources".
     const selfRetrieves = provider.name === 'claude-code' && config.claudeCodeMode === 'full';
+    const events = drainSystemEvents(channelId);
+    const eventContext = events.length
+      ? '\n\n' + untrustedBlock('events', events.map((event) => `- ${event.text}`).join('\n'))
+      : '';
     let result: RagAnswer;
     if (selfRetrieves) {
       const chat = await provider.chat(
         getHistory(channelId),
         config.systemPrompt +
           '\n\nWhen a question relates to the user\'s document library, search it with the ' +
-          'knowledge MCP tools and cite the source filenames in your answer.',
+          'knowledge MCP tools and cite the source filenames in your answer.' +
+          eventContext,
         onProgress,
       );
       result = { answer: chat.text, sources: [], files: chat.files, workDir: chat.workDir };
@@ -89,6 +96,7 @@ export async function runGroundedChat(
       result = await askWithRag(provider, getHistory(channelId), question, onProgress);
     }
     pushHistory(channelId, { role: 'assistant', content: result.answer });
+    scheduleExtraction(channelId, question, result.answer);
 
     const attachments: AttachmentBuilder[] = [];
     const skipped: string[] = [];

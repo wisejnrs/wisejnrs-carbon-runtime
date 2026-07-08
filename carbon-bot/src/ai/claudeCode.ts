@@ -87,6 +87,26 @@ export class ClaudeCodeProvider implements AiProvider {
   }
 }
 
+// Minimal one-shot query: no tools, no skills, no MCP. Used for background
+// work (commitment extraction, proactive check-in drafting) where re-injected
+// content is untrusted and must not be able to trigger tools.
+export async function liteQuery(prompt: string, system: string, model?: string): Promise<string> {
+  let result = '';
+  for await (const message of query({
+    prompt,
+    options: {
+      systemPrompt: system,
+      model: model ?? (config.claudeCodeModel === 'default' ? undefined : config.claudeCodeModel),
+      tools: [],
+      maxTurns: 4,
+      cwd: config.dataDir,
+    },
+  })) {
+    if (message.type === 'result' && message.subtype === 'success') result = message.result;
+  }
+  return result;
+}
+
 // Compact OpenClaw-style tool rows: "🛠️ Bash: run tests"
 const TOOL_EMOJI: Record<string, string> = {
   Bash: '🛠️', Read: '📖', Write: '✏️', Edit: '✏️', Glob: '🗂️', Grep: '🔍',

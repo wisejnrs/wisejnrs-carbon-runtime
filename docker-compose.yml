@@ -391,6 +391,7 @@ services:
       - HOST_CLAUDE_JSON=/home/node/.claude-host.json
       - REPO_ROOT=/work/wisejnrs-projects
       - GOOGLE_OAUTH_CREDENTIALS=/home/node/.gmail-mcp/gcp-oauth.keys.json
+      - TZ=Australia/Brisbane
     restart: unless-stopped
     # No carbon-network: the bot only needs outbound internet + port 8300,
     # and the pinned 172.20/16 subnet can collide with other stacks.

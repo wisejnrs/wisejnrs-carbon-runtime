@@ -5,6 +5,7 @@ import { ai, commands } from './commands/index.js';
 import { createProgressDisplay, runGroundedChat, replyFooter } from './chat.js';
 import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
+import { startProactive } from './proactive.js';
 import { logHistory } from './db/history.js';
 
 const chatEnabled =
@@ -21,6 +22,11 @@ const commandMap = new Map(commands.map((command) => [command.data.name, command
 
 client.once(Events.ClientReady, async (ready) => {
   console.log(`Logged in as ${ready.user.tag}`);
+  ready.user.setPresence({
+    activities: [{ name: 'your life 🤖', type: 3 /* Watching */ }],
+    status: 'online',
+  });
+  startProactive(client);
   console.log(
     `Chat: mentions=${config.enableMentionChat}, channels=[${config.chatChannels.join(', ') || 'none'}]`,
   );
@@ -78,6 +84,7 @@ if (chatEnabled) {
         return;
       }
       console.log(`[dev] ${message.author.tag} in #${channelName} -> ${repoPath}`);
+      void message.react('👀').catch(() => {});
       try {
         const placeholder = await message.reply(`⚙️ **Working** in \`${path.basename(repoPath)}\`…`);
         const display = createProgressDisplay(
@@ -104,8 +111,11 @@ if (chatEnabled) {
           input: task,
           output: reply.slice(0, 4000),
         });
+        void message.reactions.cache.get('👀')?.users.remove(client.user.id).catch(() => {});
+        void message.react('✅').catch(() => {});
       } catch (error) {
         console.error('[dev] session failed:', error);
+        void message.react('❌').catch(() => {});
         await message.reply('Dev session failed. Check the logs or send !reset.').catch(() => {});
       }
       return;
@@ -130,6 +140,7 @@ if (chatEnabled) {
       .replace(/<@&\d+>/g, '')
       .trim();
     if (!content) return;
+    void message.react('👀').catch(() => {});
     try {
       const placeholder = await message.reply('⚙️ Working…');
       const reply = await runGroundedChat(ai, message.channelId, content, (status) =>
@@ -154,8 +165,10 @@ if (chatEnabled) {
         input: content,
         output: reply.answer.slice(0, 4000),
       });
+      void message.reactions.cache.get('👀')?.users.remove(client.user.id).catch(() => {});
     } catch (error) {
       console.error('[mention] AI request failed:', error);
+      void message.react('❌').catch(() => {});
     }
   });
 }

@@ -33,6 +33,25 @@ function getDb(): Database.Database {
         repo TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       );
+      CREATE TABLE IF NOT EXISTS commitments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        dedupe_key TEXT NOT NULL,
+        due_earliest INTEGER NOT NULL,
+        due_latest INTEGER NOT NULL,
+        confidence REAL NOT NULL,
+        suggested_text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        delivered_at TEXT,
+        UNIQUE(channel_id, dedupe_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_commitments_due ON commitments(status, due_earliest);
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
   }
   return db;
@@ -92,6 +111,93 @@ export function clearDevSession(channelId: string): boolean {
     return getDb().prepare('DELETE FROM dev_sessions WHERE channel_id = ?').run(channelId).changes > 0;
   } catch {
     return false;
+  }
+}
+
+export interface Commitment {
+  id: number;
+  channel_id: string;
+  kind: string;
+  dedupe_key: string;
+  due_earliest: number;
+  due_latest: number;
+  confidence: number;
+  suggested_text: string;
+  status: string;
+}
+
+export function insertCommitment(c: Omit<Commitment, 'id' | 'status'>): boolean {
+  try {
+    const result = getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO commitments
+           (channel_id, kind, dedupe_key, due_earliest, due_latest, confidence, suggested_text)
+         VALUES (@channel_id, @kind, @dedupe_key, @due_earliest, @due_latest, @confidence, @suggested_text)`,
+      )
+      .run(c);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('[commitments] insert failed:', error);
+    return false;
+  }
+}
+
+export function dueCommitments(now: number): Commitment[] {
+  try {
+    return getDb()
+      .prepare(
+        `SELECT * FROM commitments WHERE status = 'pending' AND due_earliest <= ? ORDER BY due_earliest LIMIT 20`,
+      )
+      .all(now) as Commitment[];
+  } catch {
+    return [];
+  }
+}
+
+export function settleCommitments(ids: number[], status: 'delivered' | 'dropped'): void {
+  if (!ids.length) return;
+  try {
+    const mark = getDb().prepare(
+      `UPDATE commitments SET status = ?, delivered_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+    );
+    for (const id of ids) mark.run(status, id);
+  } catch (error) {
+    console.error('[commitments] settle failed:', error);
+  }
+}
+
+export function deliveredToday(channelId: string): number {
+  try {
+    const row = getDb()
+      .prepare(
+        `SELECT COUNT(*) AS count FROM commitments
+         WHERE channel_id = ? AND status = 'delivered' AND delivered_at >= strftime('%Y-%m-%dT00:00:00Z','now')`,
+      )
+      .get(channelId) as { count: number };
+    return row.count;
+  } catch {
+    return 0;
+  }
+}
+
+export function kvGet(key: string): string | undefined {
+  try {
+    const row = getDb().prepare('SELECT value FROM kv WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+export function kvSet(key: string, value: string): void {
+  try {
+    getDb()
+      .prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, value);
+  } catch (error) {
+    console.error('[kv] set failed:', error);
   }
 }
 
