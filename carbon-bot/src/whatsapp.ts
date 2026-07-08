@@ -9,38 +9,24 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
+import { ai } from './commands/index.js';
+import { runGroundedChat } from './chat.js';
 import { config } from './config.js';
+import { logHistory } from './db/history.js';
 import { transcribeAudio, voiceAvailable } from './voice.js';
 
-// Personal WhatsApp bridge (Baileys, multi-device web protocol - the same
-// approach OpenClaw's WhatsApp channel uses). Inbound messages land in the
-// #whatsapp Discord channel; replying to a bridged message sends the reply
-// back to that WhatsApp chat. Link by scanning the QR the bot posts.
-// NOTE: unofficial protocol - technically against WhatsApp ToS.
+// WhatsApp assistant line (Baileys, multi-device web protocol - unofficial,
+// opt-in via WHATSAPP=true): the account's "Message yourself" chat becomes a
+// direct line to MrRoboto. Text or voice-note your own number and the answer
+// comes back in the same chat, prefixed 🤖. No chats are mirrored anywhere;
+// the #whatsapp Discord channel is used only for QR / link status notices.
 
+const BOT_PREFIX = '🤖 ';
 const logger = pino({ level: 'silent' });
 let sock: ReturnType<typeof makeWASocket> | undefined;
-let bridgeChannel: TextChannel | undefined;
-
-// discord message id -> whatsapp jid, so Discord replies route back
-const replyMap = new Map<string, string>();
-function remember(discordId: string, jid: string): void {
-  replyMap.set(discordId, jid);
-  if (replyMap.size > 500) replyMap.delete(replyMap.keys().next().value!);
-}
-
-export function whatsappJidFor(discordMessageId: string): string | undefined {
-  return replyMap.get(discordMessageId);
-}
-
-export function isWhatsappBridgeChannel(channelName: string): boolean {
-  return config.whatsappEnabled && channelName === config.whatsappChannel;
-}
-
-export async function sendWhatsApp(jid: string, text: string): Promise<void> {
-  if (!sock) throw new Error('WhatsApp is not connected');
-  await sock.sendMessage(jid, { text });
-}
+let statusChannel: TextChannel | undefined;
+let selfJid = '';
+const ownMessageIds = new Set<string>();
 
 function extractText(message: WAMessage): string {
   const content = message.message;
@@ -48,67 +34,76 @@ function extractText(message: WAMessage): string {
     content?.conversation ??
     content?.extendedTextMessage?.text ??
     content?.imageMessage?.caption ??
-    content?.videoMessage?.caption ??
     ''
   );
 }
 
-async function bridgeInbound(message: WAMessage): Promise<void> {
-  if (!bridgeChannel || !message.message || message.key.fromMe) return;
-  const jid = message.key.remoteJid;
-  if (!jid || jid === 'status@broadcast') return;
+async function handleSelfChat(message: WAMessage): Promise<void> {
+  if (!sock || message.key.remoteJid !== selfJid) return;
+  if (message.key.id && ownMessageIds.has(message.key.id)) return;
 
-  const sender = message.pushName || jid.split('@')[0];
-  const group = jid.endsWith('@g.us') ? ' (group)' : '';
-  const text = extractText(message);
-  const files: AttachmentBuilder[] = [];
-  let extra = '';
+  let prompt = extractText(message).trim();
+  if (prompt.startsWith(BOT_PREFIX.trim())) return; // our own reply echoing back
 
-  const media = message.message.imageMessage
-    ? { kind: 'image', ext: 'jpg' }
-    : message.message.audioMessage
-      ? { kind: 'audio', ext: 'ogg' }
-      : message.message.videoMessage
-        ? { kind: 'video', ext: 'mp4' }
-        : message.message.documentMessage
-          ? { kind: 'document', ext: 'bin' }
-          : undefined;
-  if (media) {
+  if (!prompt && message.message?.audioMessage && voiceAvailable()) {
     try {
       const buffer = (await downloadMediaMessage(message, 'buffer', {})) as Buffer;
-      const name = message.message.documentMessage?.fileName ?? `whatsapp-${media.kind}.${media.ext}`;
-      if (buffer.length <= 9 * 1024 * 1024) files.push(new AttachmentBuilder(buffer, { name }));
-      else extra += `\n-# ${media.kind} too large to bridge (${Math.round(buffer.length / 1024 / 1024)}MB)`;
-      if (media.kind === 'audio' && voiceAvailable() && buffer.length < 5 * 1024 * 1024) {
-        const transcript = await transcribeAudio(buffer, 'voice.ogg').catch(() => '');
-        if (transcript) extra += `\n-# 🎙️ "${transcript.slice(0, 400)}"`;
-      }
+      prompt = await transcribeAudio(buffer, 'voice.ogg');
     } catch (error) {
-      extra += '\n-# (media could not be downloaded)';
-      logger.debug?.(error);
+      console.warn('[whatsapp] voice transcription failed:', error);
     }
   }
+  if (!prompt) return;
 
-  const sent = await bridgeChannel
-    .send({
-      content: `**${sender}**${group}: ${text || (media ? `[${media.kind}]` : '[unsupported message]')}${extra}`.slice(0, 2000),
-      files,
-    })
-    .catch(() => undefined);
-  if (sent) remember(sent.id, jid);
+  console.log(`[whatsapp] self-chat prompt: "${prompt.slice(0, 80)}"`);
+  try {
+    const reply = await runGroundedChat(ai, `whatsapp:${selfJid}`, prompt, async () => {});
+    const sent = await sock.sendMessage(selfJid, {
+      text: BOT_PREFIX + reply.answer.slice(0, 3900),
+    });
+    if (sent?.key.id) {
+      ownMessageIds.add(sent.key.id);
+      if (ownMessageIds.size > 200) ownMessageIds.delete(ownMessageIds.values().next().value!);
+    }
+    await reply.cleanup();
+    logHistory({
+      userId: 'whatsapp',
+      userTag: 'whatsapp-self',
+      guildId: null,
+      channelId: `whatsapp:${selfJid}`,
+      command: 'whatsapp',
+      input: prompt,
+      output: reply.answer.slice(0, 4000),
+    });
+  } catch (error) {
+    console.error('[whatsapp] assistant reply failed:', error);
+    await sock.sendMessage(selfJid, { text: BOT_PREFIX + 'Something went wrong - try again.' }).catch(() => {});
+  }
+}
+
+export function whatsappConnected(): boolean {
+  return Boolean(sock && selfJid);
+}
+
+/** Send a WhatsApp message to a phone number (e.g. +61423..., 0423... assumes AU). */
+export async function sendWhatsApp(number: string, text: string): Promise<string> {
+  if (!sock) throw new Error('WhatsApp is not connected');
+  let digits = number.replace(/[^\d]/g, '');
+  if (digits.startsWith('0')) digits = config.whatsappDefaultCc + digits.slice(1);
+  const [exists] = await sock.onWhatsApp(`${digits}@s.whatsapp.net`);
+  if (!exists?.exists || !exists.jid) throw new Error(`+${digits} is not on WhatsApp`);
+  const sent = await sock.sendMessage(exists.jid, { text });
+  if (sent?.key.id) ownMessageIds.add(sent.key.id);
+  return `+${digits}`;
 }
 
 export async function startWhatsApp(client: Client): Promise<void> {
   if (!config.whatsappEnabled) return;
   for (const [, channel] of client.channels.cache) {
     if (channel.type === ChannelType.GuildText && (channel as TextChannel).name === config.whatsappChannel) {
-      bridgeChannel = channel as TextChannel;
+      statusChannel = channel as TextChannel;
       break;
     }
-  }
-  if (!bridgeChannel) {
-    console.warn(`[whatsapp] bridge channel #${config.whatsappChannel} not found - disabled`);
-    return;
   }
 
   const { state, saveCreds } = await useMultiFileAuthState(path.join(config.dataDir, 'whatsapp'));
@@ -122,28 +117,27 @@ export async function startWhatsApp(client: Client): Promise<void> {
 
     sock.ev.on('connection.update', (update) => {
       void (async () => {
-        if (update.qr) {
+        if (update.qr && statusChannel) {
           const png = await QRCode.toBuffer(update.qr, { width: 512, margin: 2 });
-          await bridgeChannel!
+          await statusChannel
             .send({
               content:
-                '📱 **Link WhatsApp**: phone → WhatsApp → Settings → Linked Devices → ' +
-                'Link a device → scan this (expires in ~60s; a fresh code posts automatically).',
+                '📱 **Link WhatsApp**: phone → Settings → Linked Devices → Link a device → scan. ' +
+                'Then message yourself on WhatsApp to talk to MrRoboto.',
               files: [new AttachmentBuilder(png, { name: 'whatsapp-qr.png' })],
             })
             .catch(() => {});
         }
         if (update.connection === 'open') {
-          console.log('[whatsapp] connected as', sock?.user?.id);
-          await bridgeChannel!.send('✅ WhatsApp linked - your messages will appear here.').catch(() => {});
+          selfJid = `${sock?.user?.id.split(':')[0]}@s.whatsapp.net`;
+          console.log('[whatsapp] connected; assistant line =', selfJid);
         }
         if (update.connection === 'close') {
           const code = (update.lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
           if (code === DisconnectReason.loggedOut) {
             console.warn('[whatsapp] logged out - relink required');
-            await bridgeChannel!.send('⚠️ WhatsApp logged out. Restart the bot to relink.').catch(() => {});
+            await statusChannel?.send('⚠️ WhatsApp logged out. Restart the bot to relink.').catch(() => {});
           } else {
-            console.log('[whatsapp] connection closed, reconnecting...');
             setTimeout(connect, 5000);
           }
         }
@@ -153,7 +147,7 @@ export async function startWhatsApp(client: Client): Promise<void> {
     sock.ev.on('messages.upsert', ({ messages, type }) => {
       if (type !== 'notify') return;
       for (const message of messages) {
-        void bridgeInbound(message).catch((error) => console.warn('[whatsapp] bridge failed:', error));
+        void handleSelfChat(message).catch((error) => console.warn('[whatsapp] handler failed:', error));
       }
     });
   };

@@ -7,7 +7,7 @@ import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from '
 import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
 import { sendVoiceReply, speechify, transcribeAudio, voiceAvailable } from './voice.js';
-import { isWhatsappBridgeChannel, sendWhatsApp, startWhatsApp, whatsappJidFor } from './whatsapp.js';
+import { startWhatsApp } from './whatsapp.js';
 import { logHistory } from './db/history.js';
 
 // A Discord voice note is an audio attachment; transcribe it so the rest of
@@ -86,28 +86,6 @@ if (chatEnabled) {
       'name' in message.channel && typeof message.channel.name === 'string'
         ? message.channel.name.toLowerCase()
         : '';
-
-    // WhatsApp bridge channel: a Discord reply to a bridged message goes back
-    // out over WhatsApp. Non-reply messages there are left alone.
-    if (isWhatsappBridgeChannel(channelName)) {
-      const jid = message.reference?.messageId
-        ? whatsappJidFor(message.reference.messageId)
-        : undefined;
-      if (!jid) {
-        if (message.reference) {
-          await message.react('❓').catch(() => {}); // bridged mapping expired (restart?)
-        }
-        return;
-      }
-      try {
-        await sendWhatsApp(jid, message.content);
-        await message.react('✅').catch(() => {});
-      } catch (error) {
-        console.error('[whatsapp] send failed:', error);
-        await message.react('❌').catch(() => {});
-      }
-      return;
-    }
 
     // Channel-per-repo development takes precedence over plain chat.
     const repoPath = repoForChannel(channelName);

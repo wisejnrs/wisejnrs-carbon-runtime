@@ -89,6 +89,7 @@ export const config = {
   // Personal WhatsApp bridge (Baileys; unofficial protocol - link via QR)
   whatsappEnabled: process.env.WHATSAPP === 'true',
   whatsappChannel: (process.env.WHATSAPP_CHANNEL ?? 'whatsapp').toLowerCase().replace(/^#/, ''),
+  whatsappDefaultCc: process.env.WHATSAPP_DEFAULT_CC ?? '61', // leading-0 numbers assume this country code
   dreamTime: process.env.DREAM_TIME ?? '03:30', // empty string disables
   briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
   briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables

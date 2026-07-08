@@ -25,6 +25,7 @@ import {
   postToInstagram,
   postToLinkedIn,
 } from '../social.js';
+import { sendWhatsApp, whatsappConnected } from '../whatsapp.js';
 import { logHistory } from '../db/history.js';
 
 export interface Command {
@@ -375,5 +376,39 @@ const post: Command = {
   },
 };
 
-export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine, post];
+const whatsapp: Command = {
+  data: new SlashCommandBuilder()
+    .setName('whatsapp')
+    .setDescription('Send a WhatsApp message from your linked account')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((option) =>
+      option.setName('to').setDescription('Phone number (+61... or 04...)').setRequired(true),
+    )
+    .addStringOption((option) =>
+      option.setName('message').setDescription('The message to send').setRequired(true),
+    ),
+  async execute(interaction) {
+    const to = interaction.options.getString('to', true);
+    const text = interaction.options.getString('message', true);
+    if (!whatsappConnected()) {
+      await interaction.reply({
+        content: 'WhatsApp is not connected (check #whatsapp for the QR / status).',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const recipient = await sendWhatsApp(to, text);
+      await interaction.editReply(`✅ Sent to ${recipient} on WhatsApp.`);
+      audit(interaction, `${to}: ${text.slice(0, 200)}`, 'sent');
+    } catch (error) {
+      await interaction.editReply(
+        `Send failed: ${error instanceof Error ? error.message.slice(0, 200) : error}`,
+      );
+    }
+  },
+};
+
+export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine, post, whatsapp];
 export { ai };
