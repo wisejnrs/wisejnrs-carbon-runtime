@@ -11,6 +11,7 @@ import {
   type Commitment,
 } from './db/history.js';
 import { channelsWithEvents, drainSystemEvents, untrustedBlock } from './events.js';
+import { dream } from './memory.js';
 import { getWeather } from './weather.js';
 
 // Proactive loop (OpenClaw patterns): a 60s tick delivers due commitments and
@@ -118,17 +119,21 @@ async function postBriefing(client: Client): Promise<void> {
   console.log('[proactive] briefing posted to #' + channel.name);
 }
 
-function briefingDueNow(): boolean {
-  if (!config.briefingTime || !config.briefingChannel) return false;
+function scheduledDaily(kvKey: string, time: string): boolean {
+  if (!time) return false;
   const now = new Date();
-  const [hour, minute] = config.briefingTime.split(':').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
   if (now.getHours() !== hour || now.getMinutes() < minute || now.getMinutes() >= minute + 5) {
     return false;
   }
   const today = now.toISOString().slice(0, 10);
-  if (kvGet('briefing:last') === today) return false;
-  kvSet('briefing:last', today);
+  if (kvGet(kvKey) === today) return false;
+  kvSet(kvKey, today);
   return true;
+}
+
+function briefingDueNow(): boolean {
+  return Boolean(config.briefingChannel) && scheduledDaily('briefing:last', config.briefingTime);
 }
 
 export function startProactive(client: Client): void {
@@ -146,6 +151,9 @@ export function startProactive(client: Client): void {
     (async () => {
       try {
         if (briefingDueNow()) await postBriefing(client);
+        if (config.memoryEnabled && scheduledDaily('dream:last', config.dreamTime)) {
+          await dream().catch((error) => console.error('[memory] dream failed:', error));
+        }
         await deliverCheckins(client);
         await deliverEvents(client);
       } catch (error) {

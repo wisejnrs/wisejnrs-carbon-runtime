@@ -2,7 +2,7 @@ import http from 'node:http';
 import type { Client } from 'discord.js';
 import { config } from './config.js';
 import { corpusCount, knowledgeConfigured } from './rag/index.js';
-import { historyCount } from './db/history.js';
+import { factsCount, historyCount } from './db/history.js';
 
 // Minimal web surface replacing the old Carbon.Bot.Web portal: /ping and /status.
 export function startHealthServer(client: Client): http.Server {
@@ -31,6 +31,7 @@ export function startHealthServer(client: Client): http.Server {
             knowledgeServer: knowledgeConfigured(),
             corpusChunks: await corpusCount(),
             historyEntries: historyCount(),
+            memoryFacts: factsCount(),
           },
           null,
           2,

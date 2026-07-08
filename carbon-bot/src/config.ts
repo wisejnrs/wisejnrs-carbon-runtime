@@ -85,6 +85,8 @@ export const config = {
   commitmentsEnabled: process.env.COMMITMENTS !== 'false',
   commitmentsModel: process.env.COMMITMENTS_MODEL ?? 'claude-haiku-4-5',
   maxCheckinsPerDay: Number(process.env.MAX_CHECKINS_PER_DAY ?? 6),
+  memoryEnabled: process.env.MEMORY !== 'false',
+  dreamTime: process.env.DREAM_TIME ?? '03:30', // empty string disables
   briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
   briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables
   briefingLocation: process.env.BRIEFING_LOCATION ?? 'Brisbane',

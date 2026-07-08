@@ -52,6 +52,20 @@ function getDb(): Database.Database {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL DEFAULT 'general',
+        score REAL NOT NULL DEFAULT 0.7,
+        recall_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        last_recalled TEXT
+      );
+      CREATE TABLE IF NOT EXISTS dream_diary (
+        date TEXT PRIMARY KEY,
+        summary TEXT NOT NULL
+      );
     `);
   }
   return db;
@@ -199,6 +213,109 @@ export function kvSet(key: string, value: string): void {
   } catch (error) {
     console.error('[kv] set failed:', error);
   }
+}
+
+export interface Fact {
+  id: number;
+  fact: string;
+  category: string;
+  score: number;
+  recall_count: number;
+  created_at: string;
+}
+
+export function listFacts(limit = 200): Fact[] {
+  try {
+    return getDb()
+      .prepare(`SELECT id, fact, category, score, recall_count, created_at FROM facts
+                WHERE status = 'active' ORDER BY score DESC, recall_count DESC LIMIT ?`)
+      .all(limit) as Fact[];
+  } catch {
+    return [];
+  }
+}
+
+export function factsCount(): number {
+  try {
+    const row = getDb().prepare(`SELECT COUNT(*) AS count FROM facts WHERE status='active'`).get() as { count: number };
+    return row.count;
+  } catch {
+    return 0;
+  }
+}
+
+export function insertFact(fact: string, category: string, score: number): boolean {
+  try {
+    return (
+      getDb()
+        .prepare('INSERT OR IGNORE INTO facts (fact, category, score) VALUES (?, ?, ?)')
+        .run(fact.slice(0, 500), category.slice(0, 50), score).changes > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function updateFact(id: number, fact: string): void {
+  try {
+    getDb().prepare('UPDATE facts SET fact = ? WHERE id = ?').run(fact.slice(0, 500), id);
+  } catch { /* keep old wording */ }
+}
+
+export function archiveFacts(ids: number[]): void {
+  if (!ids.length) return;
+  try {
+    const mark = getDb().prepare(`UPDATE facts SET status = 'archived' WHERE id = ?`);
+    for (const id of ids) mark.run(id);
+  } catch { /* non-fatal */ }
+}
+
+export function bumpRecalls(ids: number[]): void {
+  if (!ids.length) return;
+  try {
+    const bump = getDb().prepare(
+      `UPDATE facts SET recall_count = recall_count + 1,
+       last_recalled = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+    );
+    for (const id of ids) bump.run(id);
+  } catch { /* non-fatal */ }
+}
+
+/** Archive stale facts: never recalled, older than 30 days, low score. */
+export function pruneStaleFacts(): number {
+  try {
+    return getDb()
+      .prepare(
+        `UPDATE facts SET status = 'archived'
+         WHERE status = 'active' AND recall_count = 0 AND score < 0.75
+           AND created_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')`,
+      )
+      .run().changes;
+  } catch {
+    return 0;
+  }
+}
+
+export function recentHistory(sinceIso: string, limit = 80): Array<{ command: string; input: string; output: string }> {
+  try {
+    return getDb()
+      .prepare(
+        `SELECT command, COALESCE(input,'') AS input, COALESCE(output,'') AS output
+         FROM history WHERE timestamp >= ? AND command IN ('chat','mention','voice','ask','dev')
+         ORDER BY timestamp LIMIT ?`,
+      )
+      .all(sinceIso, limit) as Array<{ command: string; input: string; output: string }>;
+  } catch {
+    return [];
+  }
+}
+
+export function appendDiary(date: string, summary: string): void {
+  try {
+    getDb()
+      .prepare('INSERT INTO dream_diary (date, summary) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET summary = excluded.summary')
+      .run(date, summary.slice(0, 2000));
+  } catch { /* non-fatal */ }
 }
 
 export function historyCount(): number {

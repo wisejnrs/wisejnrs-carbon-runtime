@@ -7,6 +7,7 @@ import { getHistory, pushHistory } from './ai/index.js';
 import { askWithRag, type RagAnswer } from './rag/index.js';
 import { scheduleExtraction } from './commitments.js';
 import { drainSystemEvents, untrustedBlock } from './events.js';
+import { activeRecall, recallBlock } from './memory.js';
 
 // Discord's default upload cap is 10MB; stay under it, and at most 10 attachments.
 const MAX_ATTACHMENT_BYTES = 9 * 1024 * 1024;
@@ -83,11 +84,14 @@ export async function runGroundedChat(
       : '';
     let result: RagAnswer;
     if (selfRetrieves) {
+      onProgress('💭 checking memory');
+      const memoryNote = await activeRecall(question);
       const chat = await provider.chat(
         getHistory(channelId),
         config.systemPrompt +
           '\n\nWhen a question relates to the user\'s document library, search it with the ' +
           'knowledge MCP tools and cite the source filenames in your answer.' +
+          recallBlock(memoryNote) +
           eventContext,
         onProgress,
       );
