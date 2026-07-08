@@ -148,7 +148,13 @@ export async function startWhatsApp(client: Client): Promise<void> {
     .catch(() => undefined);
 
   const connect = (): void => {
-    sock = makeWASocket({ auth: state, logger, version });
+    sock = makeWASocket({
+      auth: state,
+      logger,
+      version,
+      syncFullHistory: true, // pull as much chat history as WhatsApp offers at pairing
+      markOnlineOnConnect: false, // keep phone notifications working normally
+    });
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
@@ -171,8 +177,13 @@ export async function startWhatsApp(client: Client): Promise<void> {
         if (update.connection === 'close') {
           const code = (update.lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
           if (code === DisconnectReason.loggedOut) {
-            console.warn('[whatsapp] logged out - relink required');
-            await statusChannel?.send('⚠️ WhatsApp logged out. Restart the bot to relink.').catch(() => {});
+            // Device was removed on the phone: clear dead creds and offer a
+            // fresh QR automatically so relinking is just a scan.
+            console.warn('[whatsapp] logged out - clearing session, posting fresh QR');
+            const fs = await import('node:fs/promises');
+            await fs.rm(path.join(config.dataDir, 'whatsapp'), { recursive: true, force: true }).catch(() => {});
+            await statusChannel?.send('⚠️ WhatsApp was unlinked - fresh QR coming up…').catch(() => {});
+            setTimeout(() => void startWhatsApp(client), 3000);
           } else {
             setTimeout(connect, 5000);
           }
