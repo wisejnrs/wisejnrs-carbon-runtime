@@ -19,6 +19,12 @@ import {
   type ImageSize,
 } from '../imagegen.js';
 import { detectObjects, yoloAvailable } from '../yolo/detect.js';
+import {
+  instagramConfigured,
+  linkedinConfigured,
+  postToInstagram,
+  postToLinkedIn,
+} from '../social.js';
 import { logHistory } from '../db/history.js';
 
 export interface Command {
@@ -297,5 +303,77 @@ const imagine: Command = {
   },
 };
 
-export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine];
+const post: Command = {
+  data: new SlashCommandBuilder()
+    .setName('post')
+    .setDescription('Publish to a social platform (official APIs)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((option) =>
+      option
+        .setName('platform')
+        .setDescription('Where to post')
+        .setRequired(true)
+        .addChoices(
+          { name: 'LinkedIn', value: 'linkedin' },
+          { name: 'Instagram', value: 'instagram' },
+        ),
+    )
+    .addStringOption((option) =>
+      option.setName('text').setDescription('Post text / caption').setRequired(true),
+    )
+    .addAttachmentOption((option) =>
+      option.setName('image').setDescription('Image (required for Instagram)'),
+    ),
+  async execute(interaction) {
+    const platform = interaction.options.getString('platform', true);
+    const text = interaction.options.getString('text', true);
+    const image = interaction.options.getAttachment('image');
+
+    if (platform === 'linkedin' && !linkedinConfigured()) {
+      await interaction.reply({
+        content: 'LinkedIn is not configured (need LINKEDIN_ACCESS_TOKEN + LINKEDIN_AUTHOR_URN - see SETUP-social.md).',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (platform === 'instagram') {
+      if (!instagramConfigured()) {
+        await interaction.reply({
+          content: 'Instagram is not configured (need INSTAGRAM_USER_ID + INSTAGRAM_ACCESS_TOKEN - see SETUP-social.md).',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!image?.contentType?.startsWith('image/')) {
+        await interaction.reply({
+          content: 'Instagram posts need an image attachment (JPEG works best).',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
+
+    await interaction.deferReply();
+    try {
+      let link: string;
+      if (platform === 'linkedin') {
+        const buffer = image?.contentType?.startsWith('image/')
+          ? Buffer.from(await (await fetch(image.url)).arrayBuffer())
+          : undefined;
+        link = await postToLinkedIn(text, buffer);
+      } else {
+        link = await postToInstagram(text, image!.url);
+      }
+      await interaction.editReply(`✅ Posted to ${platform}: ${link}`);
+      audit(interaction, `${platform}: ${text.slice(0, 200)}`, link);
+    } catch (error) {
+      console.error('[post] failed:', error);
+      await interaction.editReply(
+        `Posting failed: ${error instanceof Error ? error.message.slice(0, 400) : error}`,
+      );
+    }
+  },
+};
+
+export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine, post];
 export { ai };
