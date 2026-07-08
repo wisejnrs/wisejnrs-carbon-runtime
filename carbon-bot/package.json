@@ -21,18 +21,22 @@
     "@huggingface/transformers": "^4.2.0",
     "@lancedb/lancedb": "^0.31.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
     "better-sqlite3": "^12.11.1",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
     "googleapis": "^173.0.0",
     "onnxruntime-node": "1.24.3",
     "openai": "^6.45.0",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4",
     "sharp": "^0.35.3",
     "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^26.1.0",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3"
   }
