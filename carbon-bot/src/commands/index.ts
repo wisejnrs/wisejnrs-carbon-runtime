@@ -6,6 +6,7 @@ import {
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
 } from 'discord.js';
+import { config } from '../config.js';
 import { createProvider } from '../ai/index.js';
 import { corpusCount, ingestCorpus } from '../rag/index.js';
 import { docmostSearch } from '../rag/knowledge.js';
@@ -207,7 +208,7 @@ const weather: Command = {
 const docs: Command = {
   data: new SlashCommandBuilder()
     .setName('docs')
-    .setDescription('Search the Docmost wiki (docs.wisejnrs.net)')
+    .setDescription('Search the Docmost wiki')
     .addStringOption((option) =>
       option.setName('query').setDescription('What to search for').setRequired(true),
     ),
@@ -222,7 +223,10 @@ const docs: Command = {
     const lines = pages.slice(0, 6).map((page) => {
       const title = page.title === 'Untitled' ? '(untitled page)' : page.title;
       const excerpt = page.excerpt.replace(/\s+/g, ' ').slice(0, 140);
-      return `**[${title}](https://docs.wisejnrs.net/p/${page.id})**\n${excerpt}`;
+      const heading = config.docmostUrl
+        ? `**[${title}](${config.docmostUrl}/p/${page.id})**`
+        : `**${title}**`;
+      return `${heading}\n${excerpt}`;
     });
     const reply = lines.join('\n\n').slice(0, 2000);
     await interaction.editReply(reply);

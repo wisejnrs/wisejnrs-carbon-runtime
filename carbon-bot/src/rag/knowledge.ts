@@ -3,8 +3,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { config } from '../config.js';
 import type { SearchHit } from './store.js';
 
-// Remote retrieval against the Wise knowledge server (knowledge.wisejnrs.net MCP).
-// The server already has the full corpus indexed, so /ask searches it directly
+// Remote retrieval against the knowledge server MCP (KNOWLEDGE_MCP_URL).
+// The server already has the corpus indexed, so /ask searches it directly
 // instead of re-embedding documents locally.
 
 interface KnowledgeResult {
@@ -71,7 +71,9 @@ export interface DocmostPage {
 }
 
 export async function docmostSearch(query: string): Promise<DocmostPage[]> {
-  const parsed = await callKnowledgeTool<{ results?: DocmostPage[] }>('docmost_search', { query });
+  const parsed = await callKnowledgeTool<{ results?: DocmostPage[] }>('docmost_search', {
+    query,
+  });
   return (parsed?.results ?? []).map((page) => ({
     ...page,
     excerpt: (page.excerpt ?? '').replace(/<\/?b>/g, '**'),

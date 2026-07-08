@@ -61,9 +61,11 @@ export const config = {
   // Google Gemini API key for /imagine image generation (optional)
   geminiApiKey: process.env.GEMINI_API_KEY,
 
-  // Wise knowledge server MCP - remote corpus retrieval for /ask (optional)
+  // Knowledge server MCP - remote corpus retrieval for /ask (optional)
   knowledgeMcpUrl: process.env.KNOWLEDGE_MCP_URL,
   knowledgeMcpKey: process.env.KNOWLEDGE_MCP_KEY,
+  // Docmost wiki base URL - /docs results link here when set
+  docmostUrl: process.env.DOCMOST_URL?.replace(/\/$/, ''),
 
   // Google Drive corpus source (optional; local corpusDir always works)
   googleDriveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID,

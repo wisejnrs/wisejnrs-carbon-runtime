@@ -35,7 +35,7 @@ Also included:
   `CLAUDE_CODE_MODE` gates capability: `chat` (no tools, default), `readonly`
   (skills + Read/Grep/Glob), or `full` (skills + all tools auto-approved — anyone who
   can message the bot can drive them; trusted servers only).
-- **RAG** (`src/rag/`): retrieval prefers the **Wise knowledge server** when
+- **RAG** (`src/rag/`): retrieval prefers the **remote knowledge server** when
   `KNOWLEDGE_MCP_URL`/`KNOWLEDGE_MCP_KEY` are set — an MCP `semantic_search` call against
   the already-indexed corpus. Fallback is the local store: **bge-small-en-v1.5**
   embeddings via transformers.js (no API key, downloads once to `data/hf-cache`) in

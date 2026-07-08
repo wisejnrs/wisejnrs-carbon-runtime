@@ -16,9 +16,9 @@ export interface RagAnswer {
 }
 
 // RAG-grounded ask: retrieve relevant corpus passages and hand them to the model
-// as context. Retrieval prefers the remote knowledge server (full Wise corpus,
-// already indexed); the local LanceDB store is the fallback. Falls back to plain
-// chat when both are empty.
+// as context. Retrieval prefers the remote knowledge server when configured;
+// the local LanceDB store is the fallback. Falls back to plain chat when both
+// are empty.
 export async function askWithRag(
   provider: AiProvider,
   history: ChatMessage[],

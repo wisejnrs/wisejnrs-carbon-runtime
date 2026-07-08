@@ -1,7 +1,7 @@
 import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
 
-// bge-small-en-v1.5, the same embedding model as the Wise corpus pipeline.
-// Downloads once to the HF cache (set HF_HOME to persist it in Docker), then runs locally.
+// bge-small-en-v1.5 embeddings, run locally via transformers.js.
+// Downloads once to the HF cache (set HF_HOME to persist it in Docker).
 const MODEL = process.env.EMBEDDING_MODEL ?? 'Xenova/bge-small-en-v1.5';
 
 let extractorPromise: Promise<FeatureExtractionPipeline> | undefined;
