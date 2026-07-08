@@ -88,7 +88,9 @@ if (chatEnabled) {
         }).finally(() => {
           done = true;
         });
-        await placeholder.edit(reply.slice(0, 2000));
+        // Final as a fresh message (OpenClaw pattern) so the channel shows unread.
+        await placeholder.delete().catch(() => {});
+        await message.reply(reply.slice(0, 2000));
         if (reply.length > 2000 && 'send' in message.channel) {
           for (let i = 2000; i < reply.length; i += 1990) {
             await message.channel.send(reply.slice(i, i + 1990));
@@ -135,7 +137,9 @@ if (chatEnabled) {
         placeholder.edit(status),
       );
       const full = reply.answer + replyFooter(reply);
-      await placeholder.edit({ content: full.slice(0, 2000), files: reply.attachments });
+      // Final as a fresh message (OpenClaw pattern) so the channel shows unread.
+      await placeholder.delete().catch(() => {});
+      await message.reply({ content: full.slice(0, 2000), files: reply.attachments });
       if (full.length > 2000 && 'send' in message.channel) {
         for (let i = 2000; i < full.length; i += 1990) {
           await message.channel.send(full.slice(i, i + 1990));

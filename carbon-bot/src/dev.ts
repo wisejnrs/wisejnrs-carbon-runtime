@@ -13,27 +13,7 @@ import { clearDevSession, getDevSession, setDevSession } from './db/history.js';
 // "!reset" starts a fresh one. The session gets the user's MCP servers
 // (knowledge base etc.) plus the repo's own project settings/CLAUDE.md.
 
-// User-scope MCP servers live in ~/.claude.json; in Docker that file is
-// mounted read-only at HOST_CLAUDE_JSON. Passed programmatically so the
-// dev session has the same MCPs (knowledge base, etc.) as the host CLI.
-function loadUserMcpServers(): Options['mcpServers'] {
-  const file = process.env.HOST_CLAUDE_JSON ?? path.join(os.homedir(), '.claude.json');
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as {
-      mcpServers?: Options['mcpServers'];
-    };
-    return parsed.mcpServers && Object.keys(parsed.mcpServers).length
-      ? parsed.mcpServers
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const userMcpServers = loadUserMcpServers();
-if (userMcpServers) {
-  console.log('[dev] MCP servers for dev sessions:', Object.keys(userMcpServers).join(', '));
-}
+import { userMcpServers } from './mcp.js';
 
 export function repoForChannel(channelName: string): string | null {
   if (!channelName || channelName.includes('/') || channelName.includes('..')) return null;

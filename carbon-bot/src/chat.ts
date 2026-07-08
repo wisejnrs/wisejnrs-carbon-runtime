@@ -8,7 +8,9 @@ import { askWithRag } from './rag/index.js';
 // Discord's default upload cap is 10MB; stay under it, and at most 10 attachments.
 const MAX_ATTACHMENT_BYTES = 9 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
-const PROGRESS_INTERVAL_MS = 5000;
+// OpenClaw-informed cadence: ~1.5s edit throttle keeps the status live without
+// hammering the Discord API.
+const PROGRESS_INTERVAL_MS = 1500;
 
 export interface GroundedReply {
   answer: string;

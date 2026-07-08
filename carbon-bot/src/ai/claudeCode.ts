@@ -3,6 +3,7 @@ import path from 'node:path';
 import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
 import type { AiProvider, ChatMessage, ChatProgress, ChatResult } from './provider.js';
 import { config } from '../config.js';
+import { userMcpServers } from '../mcp.js';
 
 // Routes chat through the local Claude Code CLI, so answers use the machine's
 // existing Claude login (subscription) instead of a metered API key.
@@ -46,6 +47,7 @@ export class ClaudeCodeProvider implements AiProvider {
       case 'full':
         options.settingSources = ['user'];
         options.permissionMode = 'bypassPermissions';
+        options.mcpServers = userMcpServers;
         options.maxTurns = 40;
         options.systemPrompt =
           system +
@@ -85,13 +87,23 @@ export class ClaudeCodeProvider implements AiProvider {
   }
 }
 
+// Compact OpenClaw-style tool rows: "🛠️ Bash: run tests"
+const TOOL_EMOJI: Record<string, string> = {
+  Bash: '🛠️', Read: '📖', Write: '✏️', Edit: '✏️', Glob: '🗂️', Grep: '🔍',
+  WebSearch: '🔎', WebFetch: '🌐', Skill: '🧰', Task: '🤖', TodoWrite: '📋',
+};
+
 export function describeToolUse(name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>;
-  if (name === 'Skill' && typeof args.command === 'string') return `skill ${args.command}`;
-  if (name === 'Skill' && typeof args.skill === 'string') return `skill ${args.skill}`;
-  if (name === 'Bash' && typeof args.description === 'string') return args.description;
-  if (typeof args.file_path === 'string') return `${name} ${path.basename(args.file_path)}`;
-  return `using ${name}`;
+  const emoji = TOOL_EMOJI[name] ?? (name.startsWith('mcp__') ? '🔌' : '⚙️');
+  const label = name.startsWith('mcp__') ? name.split('__').slice(1).join(' ') : name;
+  let detail = '';
+  if (name === 'Skill' && typeof args.command === 'string') detail = args.command;
+  else if (name === 'Skill' && typeof args.skill === 'string') detail = String(args.skill);
+  else if (name === 'Bash' && typeof args.description === 'string') detail = args.description;
+  else if (typeof args.file_path === 'string') detail = path.basename(args.file_path);
+  else if (typeof args.query === 'string') detail = `"${String(args.query).slice(0, 40)}"`;
+  return `${emoji} ${label}${detail ? `: ${detail}` : ''}`;
 }
 
 async function collectFiles(dir: string): Promise<string[]> {
