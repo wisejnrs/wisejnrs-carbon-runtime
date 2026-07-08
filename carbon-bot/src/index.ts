@@ -1,7 +1,8 @@
+import path from 'node:path';
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
-import { runGroundedChat, replyFooter } from './chat.js';
+import { createProgressDisplay, runGroundedChat, replyFooter } from './chat.js';
 import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
 import { logHistory } from './db/history.js';
@@ -78,16 +79,14 @@ if (chatEnabled) {
       }
       console.log(`[dev] ${message.author.tag} in #${channelName} -> ${repoPath}`);
       try {
-        const placeholder = await message.reply(`⚙️ Working in \`${repoPath}\`…`);
-        let done = false;
-        let last = Date.now();
-        const reply = await devChat(message.channelId, repoPath, task, (note) => {
-          if (done || Date.now() - last < 5000) return;
-          last = Date.now();
-          void placeholder.edit(`⚙️ Working — ${note}`.slice(0, 1900)).catch(() => {});
-        }).finally(() => {
-          done = true;
-        });
+        const placeholder = await message.reply(`⚙️ **Working** in \`${path.basename(repoPath)}\`…`);
+        const display = createProgressDisplay(
+          (text) => placeholder.edit(text),
+          `Working in ${path.basename(repoPath)}`,
+        );
+        const reply = await devChat(message.channelId, repoPath, task, display.onNote).finally(
+          () => display.finish(),
+        );
         // Final as a fresh message (OpenClaw pattern) so the channel shows unread.
         await placeholder.delete().catch(() => {});
         await message.reply(reply.slice(0, 2000));

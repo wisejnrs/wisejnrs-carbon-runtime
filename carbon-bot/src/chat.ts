@@ -13,6 +13,40 @@ const MAX_ATTACHMENTS = 10;
 // hammering the Discord API.
 const PROGRESS_INTERVAL_MS = 1500;
 
+export interface ProgressDisplay {
+  onNote: ChatProgress;
+  finish(): void;
+}
+
+// Live activity feed rendered into the "Working" draft message:
+//   ⚙️ **Working** · 24s
+//   > 🛠️ Bash: run tests
+//   > 🔌 gmail search_emails: "in:inbox"
+export function createProgressDisplay(
+  update: (text: string) => Promise<unknown>,
+  title = 'Working',
+): ProgressDisplay {
+  const started = Date.now();
+  const rows: string[] = [];
+  let lastEdit = 0;
+  let done = false;
+  return {
+    onNote(note) {
+      if (done) return;
+      if (rows[rows.length - 1] !== note) rows.push(note);
+      if (Date.now() - lastEdit < PROGRESS_INTERVAL_MS) return;
+      lastEdit = Date.now();
+      const elapsed = Math.round((Date.now() - started) / 1000);
+      const feed = rows.slice(-5).map((row) => `> ${row}`).join('\n');
+      const step = rows.length > 5 ? ` · step ${rows.length}` : '';
+      void update(`⚙️ **${title}** · ${elapsed}s${step}\n${feed}`.slice(0, 1900)).catch(() => {});
+    },
+    finish() {
+      done = true;
+    },
+  };
+}
+
 export interface GroundedReply {
   answer: string;
   sources: string[];
@@ -32,13 +66,8 @@ export async function runGroundedChat(
   question: string,
   update: (status: string) => Promise<unknown>,
 ): Promise<GroundedReply> {
-  let done = false;
-  let lastUpdate = Date.now();
-  const onProgress: ChatProgress = (note) => {
-    if (done || Date.now() - lastUpdate < PROGRESS_INTERVAL_MS) return;
-    lastUpdate = Date.now();
-    void update(`⚙️ Working — ${note}`.slice(0, 1900)).catch(() => {});
-  };
+  const display = createProgressDisplay(update);
+  const onProgress: ChatProgress = display.onNote;
 
   pushHistory(channelId, { role: 'user', content: question });
   try {
@@ -83,7 +112,7 @@ export async function runGroundedChat(
       },
     };
   } finally {
-    done = true;
+    display.finish();
   }
 }
 
