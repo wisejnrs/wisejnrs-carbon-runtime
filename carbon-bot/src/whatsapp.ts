@@ -90,7 +90,8 @@ export async function sendWhatsApp(number: string, text: string): Promise<string
   if (!sock) throw new Error('WhatsApp is not connected');
   let digits = number.replace(/[^\d]/g, '');
   if (digits.startsWith('0')) digits = config.whatsappDefaultCc + digits.slice(1);
-  const [exists] = await sock.onWhatsApp(`${digits}@s.whatsapp.net`);
+  const results = await sock.onWhatsApp(`${digits}@s.whatsapp.net`);
+  const exists = results?.[0];
   if (!exists?.exists || !exists.jid) throw new Error(`+${digits} is not on WhatsApp`);
   const sent = await sock.sendMessage(exists.jid, { text });
   if (sent?.key.id) ownMessageIds.add(sent.key.id);
