@@ -1,11 +1,17 @@
 import { liteQuery } from './ai/claudeCode.js';
 import { config } from './config.js';
 import { insertCommitment } from './db/history.js';
+import { inngest } from './inngest.js';
 
 // Inferred-commitments ledger (OpenClaw pattern): after a chat turn, a cheap
 // hidden model pass extracts implied follow-ups ("interview Tuesday", "waiting
 // on the quote") into SQLite. Exact reminders belong to explicit asks; this is
 // the low-confidence ledger delivered later by the proactive tick.
+//
+// Extraction runs as an Inngest function (see inngest.ts): each chat turn sends
+// an `mrroboto/exchange.logged` event, and Inngest's per-channel debounce keeps
+// the old behavior of only extracting the latest exchange in a burst - with
+// retries and run history instead of a fire-and-forget setTimeout.
 
 const EXTRACTION_SYSTEM = `You extract implied follow-up commitments from a chat exchange.
 Return ONLY a JSON array (no prose, no fences). Each item:
@@ -36,42 +42,36 @@ interface Extracted {
   suggestedText: string;
 }
 
-const pending = new Map<string, { user: string; assistant: string }>();
-const timers = new Map<string, NodeJS.Timeout>();
-
-/** Debounced per-channel: only the latest exchange in a burst gets extracted. */
+/** Queue an exchange for extraction; Inngest debounces per channel. */
 export function scheduleExtraction(channelId: string, user: string, assistant: string): void {
   if (!config.commitmentsEnabled) return;
-  pending.set(channelId, { user: user.slice(0, 2000), assistant: assistant.slice(0, 2000) });
-  clearTimeout(timers.get(channelId));
-  timers.set(
-    channelId,
-    setTimeout(() => {
-      const exchange = pending.get(channelId);
-      pending.delete(channelId);
-      timers.delete(channelId);
-      if (exchange) void extract(channelId, exchange).catch((error) => {
-        console.warn('[commitments] extraction failed:', error);
-      });
-    }, 8000),
-  );
+  void inngest
+    .send({
+      name: 'mrroboto/exchange.logged',
+      data: { channelId, user: user.slice(0, 2000), assistant: assistant.slice(0, 2000) },
+    })
+    .catch((error) => console.warn('[commitments] failed to queue extraction:', error));
 }
 
-async function extract(channelId: string, exchange: { user: string; assistant: string }): Promise<void> {
+export async function extractExchange(
+  channelId: string,
+  exchange: { user: string; assistant: string },
+): Promise<number> {
   const raw = await liteQuery(
     `Current time: ${new Date().toISOString()}\n\nUser: ${exchange.user}\n\nAssistant: ${exchange.assistant}`,
     EXTRACTION_SYSTEM,
     config.commitmentsModel,
   );
   const match = raw.match(/\[[\s\S]*\]/);
-  if (!match) return;
+  if (!match) return 0;
   let items: Extracted[];
   try {
     items = JSON.parse(match[0]) as Extracted[];
   } catch {
-    return;
+    return 0;
   }
   const now = Date.now();
+  let noted = 0;
   for (const item of items) {
     if (!item?.dedupeKey || !item.suggestedText) continue;
     const threshold = item.kind === 'care_check_in' ? CARE_CONFIDENCE_THRESHOLD : CONFIDENCE_THRESHOLD;
@@ -88,7 +88,9 @@ async function extract(channelId: string, exchange: { user: string; assistant: s
       suggested_text: item.suggestedText.slice(0, 500),
     });
     if (inserted) {
+      noted += 1;
       console.log(`[commitments] noted ${item.kind} "${item.dedupeKey}" due ${new Date(earliest).toISOString()}`);
     }
   }
+  return noted;
 }
