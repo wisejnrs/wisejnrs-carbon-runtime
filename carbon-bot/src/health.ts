@@ -1,13 +1,19 @@
 import http from 'node:http';
 import type { Client } from 'discord.js';
+import { serve } from 'inngest/node';
 import { config } from './config.js';
 import { corpusCount, knowledgeConfigured } from './rag/index.js';
 import { factsCount, historyCount } from './db/history.js';
+import { inngest, inngestFunctions } from './inngest.js';
 
 // Minimal web surface replacing the old Carbon.Bot.Web portal: /ping and /status.
 export function startHealthServer(client: Client): http.Server {
   const startedAt = Date.now();
+  // Inngest workflow functions are served here so the self-hosted Inngest server
+  // can invoke them; the functions themselves execute in this process.
+  const inngestHandler = serve({ client: inngest, functions: inngestFunctions });
   const server = http.createServer(async (req, res) => {
+    if (req.url?.startsWith('/api/inngest')) return void inngestHandler(req, res);
     if (req.url === '/ping' || req.url === '/') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end('pong');

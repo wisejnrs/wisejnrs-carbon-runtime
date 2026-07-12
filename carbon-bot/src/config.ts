@@ -114,6 +114,10 @@ export const config = {
   briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
   briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables
   briefingLocation: process.env.BRIEFING_LOCATION ?? 'Brisbane',
+  // Inngest scheduled-brief demo: run this script on a cron (empty = disabled).
+  // e.g. DAILY_BRIEF_SCRIPT=/path/to/brief.mjs, DAILY_BRIEF_CRON="TZ=UTC 45 20 * * *".
+  dailyBriefScript: process.env.DAILY_BRIEF_SCRIPT ?? '',
+  dailyBriefCron: process.env.DAILY_BRIEF_CRON ?? '45 20 * * *',
   // Microsoft 365 work calendar/email via an Azure AD app (client-credentials flow)
   azureClientId: process.env.AZURE_AD_CLIENT_ID,
   azureClientSecret: process.env.AZURE_AD_CLIENT_SECRET,
