@@ -122,12 +122,16 @@ export async function postBriefing(client: Client): Promise<boolean> {
           '(1) important/unread emails via the gmail tools - names + one-liners, skip bot noise; ' +
           "(2) today's calendar via the google-calendar tools; " +
           '(3) open follow-ups listed below, if any; (4) the weather line below. ' +
-          'Friendly, scannable, emoji section headers.\n\n' +
+          'Friendly, scannable, emoji section headers. ' +
+          'Use tools only to READ (email, calendar); do NOT post, send or deliver anything ' +
+          'yourself (no discord_post) - I deliver your reply to the right channel. ' +
+          'Your entire reply must be the briefing text itself, nothing else.\n\n' +
           (upcoming ? untrustedBlock('follow-ups', upcoming) + '\n\n' : '') +
           (weather ? `Weather:\n${weather}` : ''),
       },
     ],
-    'You are MrRoboto composing a morning briefing. Output only the briefing message.',
+    'You are MrRoboto composing a morning briefing. Never post messages via tools; ' +
+      'the caller delivers your reply. Output only the briefing message text.',
   );
   await channel.send(text.slice(0, 2000)).catch(() => {});
   console.log('[proactive] briefing posted to #' + channel.name);
