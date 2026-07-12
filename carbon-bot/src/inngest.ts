@@ -102,34 +102,35 @@ export const commitmentExtraction = inngest.createFunction(
   },
 );
 
-// External scheduled brief: run a configured script on a cron (and on demand via
-// the `mrroboto/daily-brief.run` event). Set DAILY_BRIEF_SCRIPT to enable it. The
-// script is a standalone Node file (e.g. a report generator) that does its own output.
-export const dailyBrief = inngest.createFunction(
-  {
-    id: 'daily-brief',
-    name: 'Scheduled brief',
-    retries: 2,
-    triggers: [{ cron: config.dailyBriefCron }, { event: 'mrroboto/daily-brief.run' }],
-  },
-  async ({ step }) => {
-    if (!config.dailyBriefScript) return { skipped: 'DAILY_BRIEF_SCRIPT not set' };
-    return step.run('run-daily-brief', async () => {
-      const { stdout, stderr } = await execFileAsync('node', [config.dailyBriefScript], {
-        maxBuffer: 32 * 1024 * 1024,
-        timeout: 12 * 60 * 1000,
-      });
-      const tail = (stdout + stderr).trim().split('\n').slice(-8).join('\n');
-      return { ok: true, tail };
-    });
-  },
+// External scheduled scripts (SCHEDULED_SCRIPTS / DAILY_BRIEF_SCRIPT): each runs
+// a standalone Node file on its cron, and on demand via `mrroboto/<id>.run`. The
+// script does its own output (e.g. posts a report to Discord).
+export const scheduledScripts = config.scheduledScripts.map(({ id, cron, script }) =>
+  inngest.createFunction(
+    {
+      id,
+      name: `Scheduled script: ${id}`,
+      retries: 2,
+      concurrency: { limit: 1 },
+      triggers: [{ cron }, { event: `mrroboto/${id}.run` }],
+    },
+    async ({ step }) =>
+      step.run('run-script', async () => {
+        const { stdout, stderr } = await execFileAsync('node', [script], {
+          maxBuffer: 32 * 1024 * 1024,
+          timeout: 12 * 60 * 1000,
+        });
+        const tail = (stdout + stderr).trim().split('\n').slice(-8).join('\n');
+        return { ok: true, tail };
+      }),
+  ),
 );
 
 // Register only the functions whose feature is configured, so a default install
 // doesn't fire empty crons. The proactive set requires the claude-code provider
 // (same gate startProactive always had).
 export const inngestFunctions = [
-  ...(config.dailyBriefScript ? [dailyBrief] : []),
+  ...scheduledScripts,
   ...(config.provider === 'claude-code'
     ? [
         proactiveTick,

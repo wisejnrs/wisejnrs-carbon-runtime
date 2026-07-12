@@ -114,10 +114,32 @@ export const config = {
   briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
   briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables
   briefingLocation: process.env.BRIEFING_LOCATION ?? 'Brisbane',
-  // Inngest scheduled-brief demo: run this script on a cron (empty = disabled).
-  // e.g. DAILY_BRIEF_SCRIPT=/path/to/brief.mjs, DAILY_BRIEF_CRON="TZ=UTC 45 20 * * *".
-  dailyBriefScript: process.env.DAILY_BRIEF_SCRIPT ?? '',
-  dailyBriefCron: process.env.DAILY_BRIEF_CRON ?? '45 20 * * *',
+  // Standalone Node scripts run on a cron via Inngest. SCHEDULED_SCRIPTS holds
+  // "id|cron|/abs/path.mjs" entries separated by ";" (cron may carry a TZ=
+  // prefix); DAILY_BRIEF_SCRIPT/DAILY_BRIEF_CRON is legacy shorthand for the
+  // daily-brief entry. Each id also gets an on-demand mrroboto/<id>.run event.
+  scheduledScripts: [
+    ...(process.env.DAILY_BRIEF_SCRIPT
+      ? [
+          {
+            id: 'daily-brief',
+            cron: process.env.DAILY_BRIEF_CRON ?? '45 20 * * *',
+            script: process.env.DAILY_BRIEF_SCRIPT,
+          },
+        ]
+      : []),
+    ...(process.env.SCHEDULED_SCRIPTS ?? '')
+      .split(';')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [id, cron, script] = entry.split('|').map((part) => part.trim());
+        if (!id || !cron || !script) {
+          throw new Error(`SCHEDULED_SCRIPTS entry must be "id|cron|/path.mjs", got "${entry}"`);
+        }
+        return { id, cron, script };
+      }),
+  ],
   // Microsoft 365 work calendar/email via an Azure AD app (client-credentials flow)
   azureClientId: process.env.AZURE_AD_CLIENT_ID,
   azureClientSecret: process.env.AZURE_AD_CLIENT_SECRET,
