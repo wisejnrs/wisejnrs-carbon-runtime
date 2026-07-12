@@ -17,5 +17,5 @@ export interface ChatResult {
 export interface AiProvider {
   readonly name: string;
   readonly model: string;
-  chat(history: ChatMessage[], system: string, onProgress?: ChatProgress): Promise<ChatResult>;
+  chat(history: ChatMessage[], system: string, onProgress?: ChatProgress, owner?: boolean): Promise<ChatResult>;
 }

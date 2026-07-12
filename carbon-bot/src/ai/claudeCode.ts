@@ -1,11 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
+import { commandGuardHook } from '../commandGuard.js';
 import type { AiProvider, ChatMessage, ChatProgress, ChatResult } from './provider.js';
 import { config } from '../config.js';
 import { userMcpServers } from '../mcp.js';
 import { whatsappMcpServer } from '../waTools.js';
 import { discordMcpServer } from '../discordTools.js';
+import { graphMcpServer } from '../graphTools.js';
 
 // Routes chat through the local Claude Code CLI, so answers use the machine's
 // existing Claude login (subscription) instead of a metered API key.
@@ -27,6 +29,7 @@ export class ClaudeCodeProvider implements AiProvider {
     history: ChatMessage[],
     system: string,
     onProgress?: ChatProgress,
+    owner = true,
   ): Promise<ChatResult> {
     const sessionDir = path.join(
       config.dataDir,
@@ -49,9 +52,12 @@ export class ClaudeCodeProvider implements AiProvider {
       case 'full':
         options.settingSources = ['user'];
         options.permissionMode = 'bypassPermissions';
+        // Guard destructive Bash for non-owners (e.g. @mentions from social channels).
+        options.hooks = { PreToolUse: [{ hooks: [commandGuardHook(owner)] }] };
         options.mcpServers = {
           ...(userMcpServers ?? {}),
           ...(config.whatsappEnabled ? { whatsapp: whatsappMcpServer } : {}),
+          ...(config.graphEnabled ? { work: graphMcpServer } : {}),
           discord: discordMcpServer,
         };
         options.maxTurns = 40;
@@ -65,6 +71,11 @@ export class ClaudeCodeProvider implements AiProvider {
             : '') +
           '\n\nYou have Discord tools (discord_channels, discord_read, discord_search, ' +
           'discord_post) for this server - use them to catch up on or post to other channels.' +
+          (config.graphEnabled
+            ? '\n\nYou have WORK Microsoft 365 tools (work_calendar, work_email, work_send_email) ' +
+              `for ${config.workEmail} - use these whenever the user asks about their WORK calendar or email ` +
+              '(this is a different account from the personal Google one).'
+            : '') +
           (config.extraContext ? `\n\n${config.extraContext}` : '');
         break;
       case 'readonly':

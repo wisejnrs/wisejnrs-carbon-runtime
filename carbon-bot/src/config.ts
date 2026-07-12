@@ -80,6 +80,26 @@ export const config = {
   sttModel: process.env.STT_MODEL ?? 'whisper-1',
   ttsModel: process.env.TTS_MODEL ?? 'tts-1',
   ttsVoice: process.env.TTS_VOICE ?? 'onyx',
+  // Hume Octave TTS (primary; OpenAI tts-1 is the fallback). humeVoiceName = a saved Hume voice.
+  humeApiKey: process.env.HUME_API_KEY,
+  humeVoiceName: process.env.HUME_VOICE_NAME ?? 'MrRoboto',
+  // 'CUSTOM_VOICE' for your saved/cloned voices, 'HUME_AI' for Hume's stock library.
+  humeVoiceProvider: (process.env.HUME_VOICE_PROVIDER === 'HUME_AI' ? 'HUME_AI' : 'CUSTOM_VOICE') as
+    | 'CUSTOM_VOICE'
+    | 'HUME_AI',
+  // Live voice-channel chat: after the "Hey MrRoboto" wake word, follow-ups are
+  // accepted without the wake word for this long (ms) so it stays conversational.
+  voiceConvWindowMs: Number(process.env.VOICE_CONV_WINDOW_MS ?? 20000),
+  // If set to a user ID, the bot auto-joins whatever voice channel that user
+  // enters (and leaves when they do) - no /talk needed. Gated to one person.
+  voiceAutoJoinUserId: process.env.VOICE_AUTOJOIN_USER_ID ?? '',
+  // Owner Discord user IDs (comma-separated). Owners bypass the dev-session
+  // command guard (see commandGuard.ts); everyone else is blocked from a small
+  // set of destructive commands. Default: the primary operator.
+  ownerUserIds: (process.env.OWNER_USER_IDS ?? '1007461180773777412')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
 
   // Proactive features (claude-code provider only)
   commitmentsEnabled: process.env.COMMITMENTS !== 'false',
@@ -94,4 +114,12 @@ export const config = {
   briefingChannel: process.env.BRIEFING_CHANNEL ?? 'mrroboto',
   briefingTime: process.env.BRIEFING_TIME ?? '07:30', // empty string disables
   briefingLocation: process.env.BRIEFING_LOCATION ?? 'Brisbane',
+  // Microsoft 365 work calendar/email via an Azure AD app (client-credentials flow)
+  azureClientId: process.env.AZURE_AD_CLIENT_ID,
+  azureClientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+  azureTenantId: process.env.AZURE_AD_TENANT_ID,
+  workEmail: process.env.WORK_EMAIL ?? '',
+  graphEnabled: Boolean(
+    process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET && process.env.AZURE_AD_TENANT_ID,
+  ),
 };

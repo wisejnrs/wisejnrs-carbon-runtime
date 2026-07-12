@@ -34,3 +34,4 @@ blog-post-*.md
 *VERIFICATION_REPORT.md
 test-all-blog-examples.sh
 test_example*.py
+docker-compose.yml

@@ -26,7 +26,9 @@ import {
   postToLinkedIn,
 } from '../social.js';
 import { sendWhatsApp, whatsappConnected } from '../whatsapp.js';
+import { startVoiceSession, stopVoiceSession } from '../voicechannel.js';
 import { logHistory } from '../db/history.js';
+import type { GuildMember } from 'discord.js';
 
 export interface Command {
   data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
@@ -106,8 +108,12 @@ const ask: Command = {
     await interaction.deferReply();
 
     try {
-      const reply = await runGroundedChat(ai, interaction.channelId, message, (status) =>
-        interaction.editReply(status),
+      const reply = await runGroundedChat(
+        ai,
+        interaction.channelId,
+        message,
+        (status) => interaction.editReply(status),
+        config.ownerUserIds.includes(interaction.user.id),
       );
       const parts = chunk(reply.answer + replyFooter(reply));
       await interaction.editReply({ content: parts[0], files: reply.attachments });
@@ -410,5 +416,54 @@ const whatsapp: Command = {
   },
 };
 
-export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine, post, whatsapp];
+const talk: Command = {
+  data: new SlashCommandBuilder()
+    .setName('talk')
+    .setDescription("Join your voice channel for live voice chat (say 'Hey MrRoboto')")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  async execute(interaction) {
+    const member = interaction.member as GuildMember | null;
+    const channel = member?.voice?.channel ?? null;
+    if (!channel) {
+      await interaction.reply({
+        content: 'Hop into a voice channel first, then run /talk and I will join you.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const textChannel = interaction.channel;
+      await startVoiceSession(channel, interaction.channelId, (line) => {
+        if (textChannel && 'send' in textChannel) void textChannel.send(line.slice(0, 1900)).catch(() => {});
+      });
+      await interaction.editReply(
+        `🔊 Joined **${channel.name}**. Say “Hey MrRoboto…” and I'll answer out loud — follow-ups don't need the wake word for ${Math.round(config.voiceConvWindowMs / 1000)}s. Run /leave to end.`,
+      );
+      audit(interaction, `join ${channel.name}`);
+    } catch (error) {
+      console.error('[talk] join failed:', error);
+      await interaction.editReply(
+        `Couldn't join voice: ${error instanceof Error ? error.message.slice(0, 300) : error}`,
+      );
+    }
+  },
+};
+
+const leave: Command = {
+  data: new SlashCommandBuilder()
+    .setName('leave')
+    .setDescription('Leave the voice channel / end voice chat')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  async execute(interaction) {
+    const left = interaction.guildId ? stopVoiceSession(interaction.guildId) : false;
+    await interaction.reply({
+      content: left ? '👋 Left the voice channel.' : "I'm not in a voice channel.",
+      flags: MessageFlags.Ephemeral,
+    });
+    audit(interaction);
+  },
+};
+
+export const commands: Command[] = [ping, userinfo, cat, ask, corpus, yolov, weather, docs, imagine, post, whatsapp, talk, leave];
 export { ai };

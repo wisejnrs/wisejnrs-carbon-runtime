@@ -68,6 +68,7 @@ export async function runGroundedChat(
   channelId: string,
   question: string,
   update: (status: string) => Promise<unknown>,
+  owner = true,
 ): Promise<GroundedReply> {
   const display = createProgressDisplay(update);
   const onProgress: ChatProgress = display.onNote;
@@ -94,6 +95,7 @@ export async function runGroundedChat(
           recallBlock(memoryNote) +
           eventContext,
         onProgress,
+        owner,
       );
       result = { answer: chat.text, sources: [], files: chat.files, workDir: chat.workDir };
     } else {

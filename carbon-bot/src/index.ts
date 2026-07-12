@@ -10,6 +10,7 @@ import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from '
 import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
 import { sendVoiceReply, speechify, transcribeAudio, voiceAvailable } from './voice.js';
+import { startVoiceSession, voiceSessionActive } from './voicechannel.js';
 import { startWhatsApp } from './whatsapp.js';
 import { setDiscordClient } from './discordTools.js';
 import { logHistory } from './db/history.js';
@@ -55,10 +56,64 @@ async function saveImages(
   return saved;
 }
 
+// Inline text-based attachments (Discord turns any long paste into a `message.txt`,
+// and people drop .md/.txt/.csv notes) so their content reaches the agent as task
+// text instead of being silently ignored.
+async function readTextAttachments(
+  message: import('discord.js').Message,
+): Promise<string | null> {
+  const texts = [...message.attachments.values()].filter((a) => {
+    const ct = a.contentType ?? '';
+    const name = (a.name ?? '').toLowerCase();
+    return ct.startsWith('text/') || ct.includes('json') || /\.(txt|md|markdown|csv|json|log|ya?ml|rtf)$/.test(name);
+  });
+  if (!texts.length) return null;
+  const parts: string[] = [];
+  for (const a of texts) {
+    try {
+      const content = await (await fetch(a.url)).text();
+      // message.txt is just an overflowed paste - no need to label it.
+      const label = a.name && a.name !== 'message.txt' ? `[${a.name}]\n` : '';
+      parts.push((label + content).slice(0, 100_000));
+      console.log(`[dev] read text attachment ${a.name} (${Math.round((a.size ?? 0) / 1024)}KB)`);
+    } catch (error) {
+      console.warn('[dev] failed reading text attachment', a.name, error);
+    }
+  }
+  return parts.length ? parts.join('\n\n') : null;
+}
+
+// Save other document attachments (pdf, docx, epub, zip…) into <repo>/uploads/ so a
+// dev session can open them with the Read tool.
+async function saveDocAttachments(
+  message: import('discord.js').Message,
+  repoPath: string,
+): Promise<string[]> {
+  const docs = [...message.attachments.values()].filter((a) => {
+    const ct = a.contentType ?? '';
+    const name = (a.name ?? '').toLowerCase();
+    if (ct.startsWith('image/') || ct.startsWith('audio/') || ct.startsWith('text/') || ct.includes('json')) return false;
+    if (/\.(txt|md|markdown|csv|json|log|ya?ml|rtf)$/.test(name)) return false; // handled as text
+    return true;
+  });
+  if (!docs.length) return [];
+  const dir = nodePath.join(repoPath, 'uploads');
+  await fs.mkdir(dir, { recursive: true });
+  const saved: string[] = [];
+  for (const a of docs) {
+    const safe = (a.name ?? 'file').replace(/[^\w.\-]/g, '_');
+    const dest = nodePath.join(dir, `${Date.now()}-${safe}`);
+    await fs.writeFile(dest, Buffer.from(await (await fetch(a.url)).arrayBuffer()));
+    saved.push(dest);
+    console.log(`[dev] saved document ${safe} (${Math.round((a.size ?? 0) / 1024)}KB)`);
+  }
+  return saved;
+}
+
 const chatEnabled =
   config.enableMentionChat || config.chatChannels.length > 0 || devChannelsAvailable();
 
-const intents = [GatewayIntentBits.Guilds];
+const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates];
 if (chatEnabled) {
   // Both require the privileged Message Content intent in the developer portal.
   intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
@@ -139,6 +194,16 @@ if (chatEnabled) {
           `${task}\n\n[Design image(s) attached: ${savedImages.join(', ')}. ` +
           `View each with the Read tool and use them as the design/spec to build from.]`.trim();
       }
+      // Fold in text-file attachments (long pastes become message.txt; also .md/.txt notes).
+      const docText = await readTextAttachments(message).catch(() => null);
+      if (docText) task = [task, docText].filter(Boolean).join('\n\n');
+      // Save other documents (pdf/docx/epub…) into the repo for the agent to Read.
+      const savedDocs = await saveDocAttachments(message, repoPath).catch(() => [] as string[]);
+      if (savedDocs.length) {
+        task =
+          `${task}\n\n[Document(s) attached: ${savedDocs.join(', ')}. ` +
+          `Open each with the Read tool.]`.trim();
+      }
       if (!task) return;
       if (task === '!reset') {
         const had = resetDevSession(message.channelId);
@@ -153,9 +218,13 @@ if (chatEnabled) {
           (text) => placeholder.edit(text),
           `Working in ${path.basename(repoPath)}`,
         );
-        const reply = await devChat(message.channelId, repoPath, task, display.onNote).finally(
-          () => display.finish(),
-        );
+        const reply = await devChat(
+          message.channelId,
+          repoPath,
+          task,
+          display.onNote,
+          config.ownerUserIds.includes(message.author.id),
+        ).finally(() => display.finish());
         const attachments = reply.files.map(
           (file) => new AttachmentBuilder(file, { name: path.basename(file) }),
         );
@@ -217,8 +286,12 @@ if (chatEnabled) {
     void message.react('👀').catch(() => {});
     try {
       const placeholder = await message.reply('⚙️ Working…');
-      const reply = await runGroundedChat(ai, message.channelId, content, (status) =>
-        placeholder.edit(status),
+      const reply = await runGroundedChat(
+        ai,
+        message.channelId,
+        content,
+        (status) => placeholder.edit(status),
+        config.ownerUserIds.includes(message.author.id),
       );
       const full = reply.answer + replyFooter(reply);
       // Final as a fresh message (OpenClaw pattern) so the channel shows unread.
@@ -275,8 +348,12 @@ if (chatEnabled) {
         const lastUser = [...prior].reverse().find((m) => m.role === 'user');
         if (!lastUser) return;
         const placeholder = await msg.channel.send('♻️ Regenerating…');
-        const regen = await runGroundedChat(ai, msg.channelId, lastUser.content, (status) =>
-          placeholder.edit(status),
+        const regen = await runGroundedChat(
+          ai,
+          msg.channelId,
+          lastUser.content,
+          (status) => placeholder.edit(status),
+          config.ownerUserIds.includes(user.id),
         );
         await placeholder.delete().catch(() => {});
         await msg.channel.send({
@@ -287,6 +364,31 @@ if (chatEnabled) {
       }
     } catch (error) {
       console.warn('[reactions] handler failed:', error);
+    }
+  });
+}
+
+// Auto-join the voice channel Mike enters (gated to one user id) so he can just hop
+// in and talk - no /talk needed. Leaving is handled by the empty-channel check.
+if (config.voiceAutoJoinUserId) {
+  client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+    try {
+      if (newState.id !== config.voiceAutoJoinUserId) return;
+      const channel = newState.channel;
+      if (!channel || channel.id === oldState.channelId) return; // only on a fresh join/move
+      if (voiceSessionActive(newState.guild.id)) return;
+      const textCh = newState.guild.channels.cache.find(
+        (c) => c.name === config.briefingChannel && c.type === 0,
+      );
+      const textChannelId = textCh?.id ?? channel.id;
+      console.log(`[voice] auto-join: ${newState.member?.user.tag} entered #${channel.name}`);
+      await startVoiceSession(channel, textChannelId, (line) => {
+        if (textCh && 'send' in textCh) {
+          void (textCh as { send: (s: string) => Promise<unknown> }).send(line.slice(0, 1900)).catch(() => {});
+        }
+      }).catch((error) => console.error('[voice] auto-join failed:', error));
+    } catch (error) {
+      console.error('[voice] VoiceStateUpdate handler error:', error);
     }
   });
 }

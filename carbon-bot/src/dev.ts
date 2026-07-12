@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
 import { config } from './config.js';
+import { commandGuardHook } from './commandGuard.js';
 import { describeToolUse } from './ai/claudeCode.js';
 import type { ChatProgress } from './ai/index.js';
 import { clearDevSession, getDevSession, setDevSession } from './db/history.js';
@@ -86,12 +87,15 @@ export async function devChat(
   repoPath: string,
   prompt: string,
   onProgress?: ChatProgress,
+  owner = true,
 ): Promise<DevResult> {
   const startedAt = Date.now() - 2000; // small clock-skew buffer
   const options: Options = {
     cwd: repoPath,
     model: config.claudeCodeModel === 'default' ? undefined : config.claudeCodeModel,
     permissionMode: 'bypassPermissions',
+    // Guard destructive Bash commands for non-owners without disrupting normal dev.
+    hooks: { PreToolUse: [{ hooks: [commandGuardHook(owner)] }] },
     settingSources: ['user', 'project'], // user skills + repo CLAUDE.md/.mcp.json
     mcpServers: userMcpServers,
     maxTurns: 150,

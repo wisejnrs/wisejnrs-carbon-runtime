@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { HumeClient } from 'hume';
 import { config } from './config.js';
 
 const execFileAsync = promisify(execFile);
@@ -28,7 +29,27 @@ export async function transcribeAudio(buffer: Buffer, filename = 'voice.ogg'): P
   return data.text.trim();
 }
 
-async function synthesize(text: string): Promise<Buffer> {
+let humeClient: HumeClient | null = null;
+function hume(): HumeClient {
+  if (!humeClient) humeClient = new HumeClient({ apiKey: config.humeApiKey! });
+  return humeClient;
+}
+
+// Hume Octave TTS using a saved voice (config.humeVoiceName) for a consistent
+// character. Far more expressive than OpenAI tts-1.
+async function synthesizeHume(text: string): Promise<Buffer> {
+  const r = await hume().tts.synthesizeJson({
+    utterances: [
+      { text: text.slice(0, 2000), voice: { name: config.humeVoiceName, provider: config.humeVoiceProvider } },
+    ],
+    format: { type: 'mp3' },
+  });
+  const audio = r.generations?.[0]?.audio;
+  if (!audio) throw new Error('Hume returned no audio');
+  return Buffer.from(audio, 'base64');
+}
+
+async function synthesizeOpenAI(text: string): Promise<Buffer> {
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
@@ -46,6 +67,23 @@ async function synthesize(text: string): Promise<Buffer> {
     throw new Error(`TTS failed (${response.status}): ${(await response.text()).slice(0, 150)}`);
   }
   return Buffer.from(await response.arrayBuffer());
+}
+
+// Hume primary; OpenAI tts-1 automatic fallback so a Hume hiccup never mutes MrRoboto.
+async function synthesize(text: string): Promise<Buffer> {
+  if (config.humeApiKey) {
+    try {
+      return await synthesizeHume(text);
+    } catch (err) {
+      console.error('[voice] Hume TTS failed, falling back to OpenAI:', (err as Error).message);
+    }
+  }
+  return synthesizeOpenAI(text);
+}
+
+/** TTS a line and return the raw MP3 bytes (for playing into a live voice channel). */
+export async function synthesizeSpeech(text: string): Promise<Buffer> {
+  return synthesize(text);
 }
 
 async function ffmpeg(args: string[], input: Buffer): Promise<Buffer> {
@@ -92,6 +130,8 @@ async function toVoiceNote(audio: Buffer): Promise<VoiceNote> {
 /** Make reply text listenable: drop code blocks and markdown, cap the length. */
 export function speechify(text: string): string {
   return text
+    // Say the name "Mister Robot-oh" (not "Mr Roboto" mashed together).
+    .replace(/\bMr\.?\s*Roboto\b|\bMrRoboto\b/gi, 'Mister Robot-oh')
     .replace(/```[\s\S]*?```/g, ' (code omitted) ')
     .replace(/https?:\/\/\S+/g, ' (link) ')
     .replace(/[*_#>`|]/g, '')
