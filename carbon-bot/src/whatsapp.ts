@@ -120,14 +120,41 @@ export function whatsappConnected(): boolean {
   return Boolean(sock && selfJid);
 }
 
-/** Send a WhatsApp message to a phone number (e.g. +61423..., 0423... assumes AU). */
-export async function sendWhatsApp(number: string, text: string): Promise<string> {
+/**
+ * Send a WhatsApp message. `to` is one of:
+ *  - a phone number (+61423..., 0423... assumes AU) → resolved via onWhatsApp
+ *  - a full JID (group ...@g.us or contact ...@s.whatsapp.net) → sent as-is
+ *  - a group subject (e.g. "Blade AI") → resolved against joined groups
+ */
+export async function sendWhatsApp(to: string, text: string): Promise<string> {
   if (!sock) throw new Error('WhatsApp is not connected');
-  let digits = number.replace(/[^\d]/g, '');
+
+  // Already a JID (group or contact): send straight through.
+  if (to.includes('@g.us') || to.includes('@s.whatsapp.net')) {
+    const sent = await sock.sendMessage(to, { text });
+    if (sent?.key.id) ownMessageIds.add(sent.key.id);
+    return to;
+  }
+
+  // A group name (not a phone number): match against the groups we're in.
+  if (!/\d/.test(to.replace(/[^\d]/g, '')) || /[a-z]/i.test(to)) {
+    const groups = await sock.groupFetchAllParticipating();
+    const needle = to.trim().toLowerCase();
+    const match = Object.values(groups).find((g) => g.subject?.toLowerCase() === needle)
+      ?? Object.values(groups).find((g) => g.subject?.toLowerCase().includes(needle));
+    if (match) {
+      const sent = await sock.sendMessage(match.id, { text });
+      if (sent?.key.id) ownMessageIds.add(sent.key.id);
+      return match.subject ?? match.id;
+    }
+    // fall through and try as a number if no group matched
+  }
+
+  let digits = to.replace(/[^\d]/g, '');
   if (digits.startsWith('0')) digits = config.whatsappDefaultCc + digits.slice(1);
   const results = await sock.onWhatsApp(`${digits}@s.whatsapp.net`);
   const exists = results?.[0];
-  if (!exists?.exists || !exists.jid) throw new Error(`+${digits} is not on WhatsApp`);
+  if (!exists?.exists || !exists.jid) throw new Error(`${to} is not on WhatsApp (no number or group matched)`);
   const sent = await sock.sendMessage(exists.jid, { text });
   if (sent?.key.id) ownMessageIds.add(sent.key.id);
   return `+${digits}`;

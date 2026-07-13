@@ -63,9 +63,9 @@ export const whatsappMcpServer = createSdkMcpServer({
     ),
     tool(
       'wa_send',
-      'Send a WhatsApp message from the user\'s account. Confirm wording with the user before sending unless they gave the exact text.',
+      'Send a WhatsApp message from the user\'s account, to a person OR a group. Confirm wording with the user before sending unless they gave the exact text.',
       {
-        to: z.string().describe('phone number (+61... or 04...) or jid'),
+        to: z.string().describe('phone number (+61... or 04...), a group name (e.g. "Blade AI"), or a jid (...@g.us / ...@s.whatsapp.net)'),
         text: z.string().describe('the message'),
       },
       async (args) => {
