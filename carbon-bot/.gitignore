@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+data/
+corpus/*
+!corpus/.gitkeep
+models/*.onnx
+
+# Google Gmail/Calendar MCP OAuth client (secret — never commit)
+gcp-oauth.keys.json
+SETUP-google.md
+SETUP-social.md

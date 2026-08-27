@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=NVIDIA X Server Settings
+Comment=Configure NVIDIA GPU and view GPU information
+Icon=nvidia-settings
+Exec=nvidia-settings
+Terminal=false
+Categories=System;Settings;
+Keywords=nvidia;gpu;graphics;settings;

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Carbon Transparency
+Comment=Enable compositing and transparency effects
+Exec=bash /home/carbon/.config/cinnamon/enable-transparency.sh
+Icon=preferences-desktop-effects
+Terminal=false
+Hidden=false
+X-GNOME-Autostart-enabled=true

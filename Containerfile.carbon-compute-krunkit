@@ -1,0 +1,106 @@
+# Carbon Compute for krunkit GPU - COMPLETE
+# Full-featured ML/AI environment with GPU acceleration
+# Includes: VNC Desktop, Jupyter, code-server, all tools + GPU
+
+FROM quay.io/centos/centos:stream9
+
+LABEL maintainer="Michael Wise <mike@wisejnrs.net>"
+LABEL description="Complete Carbon Compute with krunkit GPU acceleration"
+LABEL version="2.0.0-krunkit-gpu"
+
+# Install EPEL and Venus GPU drivers from Copr
+RUN dnf install -y epel-release && \
+    dnf install -y 'dnf-command(copr)' && \
+    dnf copr enable -y slp/mesa-krunkit epel-9-aarch64 && \
+    dnf install -y \
+    mesa-vulkan-drivers \
+    vulkan-loader \
+    vulkan-tools \
+    && dnf clean all
+
+# Install desktop environment and tools
+RUN dnf install -y \
+    @base-x \
+    tigervnc-server \
+    supervisor \
+    python3 python3-pip python3-devel \
+    nodejs npm \
+    git vim nano wget openssh-server \
+    && dnf clean all
+
+# Install code-server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# Install ML/AI Python packages
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio \
+    tensorflow \
+    numpy pandas scipy matplotlib seaborn \
+    scikit-learn \
+    jupyter jupyterlab ipywidgets \
+    notebook \
+    transformers \
+    datasets
+
+# Create carbon user
+RUN useradd -m -s /bin/bash -u 1000 carbon && \
+    echo "carbon:Carbon123#" | chpasswd && \
+    mkdir -p /home/carbon/work && \
+    chown -R carbon:carbon /home/carbon
+
+# Setup VNC for carbon user
+RUN mkdir -p /home/carbon/.vnc && \
+    echo "Carbon123#" | vncpasswd -f > /home/carbon/.vnc/passwd && \
+    chmod 600 /home/carbon/.vnc/passwd && \
+    chown -R carbon:carbon /home/carbon/.vnc
+
+# Configure supervisord
+RUN mkdir -p /etc/supervisor/conf.d && \
+    cat > /etc/supervisor/conf.d/supervisord.conf << 'EOF'
+[supervisord]
+nodaemon=true
+user=root
+
+[program:vnc]
+command=/usr/bin/vncserver :1 -geometry 1920x1080 -depth 24
+user=carbon
+autorestart=true
+stdout_logfile=/var/log/vnc.log
+stderr_logfile=/var/log/vnc.log
+
+[program:jupyter]
+command=jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+directory=/home/carbon
+user=carbon
+autorestart=true
+stdout_logfile=/var/log/jupyter.log
+stderr_logfile=/var/log/jupyter.log
+
+[program:code-server]
+command=code-server --bind-addr 0.0.0.0:9999 --auth none
+user=carbon
+autorestart=true
+stdout_logfile=/var/log/code-server.log
+stderr_logfile=/var/log/code-server.log
+EOF
+
+# Add GPU test script
+RUN cat > /usr/local/bin/test-gpu.sh << 'EOF'
+#!/bin/bash
+echo "=== Carbon GPU Test ==="
+echo "GPU Device:"
+ls -la /dev/dri 2>/dev/null || echo "No GPU"
+echo ""
+echo "Vulkan:"
+vulkaninfo --summary 2>&1 | head -20
+echo ""
+echo "PyTorch:"
+python3 -c "import torch; print(f'PyTorch {torch.__version__}')"
+EOF
+RUN chmod +x /usr/local/bin/test-gpu.sh
+
+# Expose ports
+EXPOSE 5901 6900 8888 9999
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

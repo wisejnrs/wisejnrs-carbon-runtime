@@ -1,0 +1,238 @@
+# ===== Base image selection (GPU-enabled) =====
+ARG ROOT_CONTAINER=wisejnrs/carbon-base:latest
+FROM ${ROOT_CONTAINER} AS carbon-tools
+
+LABEL maintainer="Michael Wise <mike@WiseJNRS.net>" version="1.0.0"
+
+# ===== Build args =====
+ARG DEFAULT_USER="carbon"
+ARG DEBIAN_FRONTEND=noninteractive
+ARG BLENDER_VERSION=4.5.0
+ARG C64DBG_URL=""
+
+# ===== Environment =====
+ENV DOCKER_NAME="carbon-tools"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+USER root
+
+# ===== Copy local rootfs into container root =====
+COPY --chown=root:root rootfs/ /
+
+# ===== CLI goodies: zoxide, pass, jq, stow, fzf, GitHub CLI (gh) =====
+RUN set -eux; \
+  # gh apt repo
+  install -d -m 0755 /usr/share/keyrings; \
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg; \
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg; \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list; \
+  \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    zoxide pass jq stow fzf gh; \
+  \
+  # bash integrations for all users
+  printf 'eval "$(zoxide init bash)"\n' > /etc/profile.d/zz-10-zoxide.sh; \
+  printf '%s\n' \
+    '# fzf keybindings + completion' \
+    'if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then . /usr/share/doc/fzf/examples/key-bindings.bash; fi' \
+    'if [ -f /usr/share/doc/fzf/examples/completion.bash ]; then . /usr/share/doc/fzf/examples/completion.bash; fi' \
+    > /etc/profile.d/zz-20-fzf.sh; \
+  \
+  # gh completion (bash)
+  mkdir -p /etc/bash_completion.d; \
+  gh completion -s bash > /etc/bash_completion.d/gh || true; \
+  \
+  # optional: if you typed "xoxide", make it an alias to the usual 'z' command
+  printf "alias xoxide='z'\n" > /etc/profile.d/zz-05-aliases.sh; \
+  \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Install Docker CLI =====
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===== Install kubectl =====
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl
+
+# ===== Install Terraform =====
+RUN wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list \
+    && apt-get update \
+    && apt-get install -y terraform \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===== Install Ansible =====
+RUN pip install ansible ansible-lint
+
+# ===== Install additional CLI tools =====
+RUN pip install \
+    httpie \
+    awscli
+
+# ===== Security & OSINT toolkit (Ubuntu 22.04 — robust) =====
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    nmap nikto sqlmap gobuster dirb hydra hashcat aircrack-ng \
+    tcpdump tshark dnsutils whois netcat-openbsd socat whatweb \
+    libimage-exiftool-perl ca-certificates; \
+  (apt-get install -y --no-install-recommends masscan || true); \
+  (apt-get install -y --no-install-recommends dnsrecon || true); \
+  (apt-get install -y --no-install-recommends wafw00f || true); \
+  pip3 install --no-cache-dir theHarvester sherlock wfuzz wapiti3; \
+  mkdir -p /usr/share; \
+  git clone --depth 1 https://github.com/danielmiessler/SecLists /usr/share/seclists || true; \
+  ln -sfn /usr/share/seclists /usr/share/wordlists || true; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Creative apps from PPAs =====
+RUN set -eux; \
+  add-apt-repository -y ppa:inkscape.dev/stable; \
+  add-apt-repository -y ppa:scribus/ppa; \
+  add-apt-repository -y ppa:ubuntuhandbook1/audacity; \
+  apt-get update -y; \
+  apt-get install -y --no-install-recommends \
+    audacity inkscape gimp scribus putty filezilla wireshark shotcut libreoffice abiword; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Creative extras (photo/video/audio/CAD/utility) =====
+RUN set -eux; \
+  add-apt-repository -y ppa:obsproject/obs-studio; \
+  apt-get update -y; \
+  apt-get install -y --no-install-recommends \
+    krita darktable rawtherapee \
+    kdenlive obs-studio handbrake handbrake-cli vlc \
+    flameshot simplescreenrecorder peek \
+    freecad meshlab \
+    lmms musescore carla calf-plugins \
+    okular evince \
+    remmina remmina-plugin-rdp remmina-plugin-vnc remmina-plugin-secret \
+    fonts-cantarell fonts-dejavu fonts-noto-color-emoji \
+    pandoc graphviz \
+    qalculate-gtk gparted baobab xclip xsel gdebi-core \
+  ; apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Retro emulation: VICE + RetroArch + MAME + C64 Debugger GUI =====
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    vice cc65 fceux retroarch mame \
+    libsdl2-2.0-0 libgtk2.0-0; \
+  (apt-get install -y --no-install-recommends sdlmame || true); \
+  apt-get install -y --no-install-recommends retroarch-assets            || true; \
+  apt-get install -y --no-install-recommends retroarch-joypad-autoconfig || true; \
+  apt-get install -y --no-install-recommends libretro-fceumm             || true; \
+  apt-get install -y --no-install-recommends libretro-database           || true; \
+  apt-get install -y --no-install-recommends libretro-shaders            || true; \
+  apt-get install -y --no-install-recommends libretro-nestopia           || true; \
+  apt-get install -y --no-install-recommends libretro-snes9x             || true; \
+  apt-get install -y --no-install-recommends libretro-bsnes-mercury-performance || true; \
+  apt-get install -y --no-install-recommends libretro-bsnes-mercury-accuracy   || true; \
+  apt-get install -y --no-install-recommends libretro-mame               || true; \
+  apt-get install -y --no-install-recommends libretro-mame2003 libretro-mame2003-plus libretro-mame2010 || true; \
+  install -d -m 0777 /roms/mame /roms/nes /roms/snes /roms/c64; \
+  if [ -x /usr/games/mame ] && [ ! -e /usr/local/bin/mame ]; then ln -s /usr/games/mame /usr/local/bin/mame; fi; \
+  mkdir -p /opt/c64debugger; \
+  if [ -n "${C64DBG_URL}" ]; then \
+    echo "[c64debugger] downloading from explicit URL: ${C64DBG_URL}"; \
+    curl -fsSL "${C64DBG_URL}" -o /tmp/c64debugger.zip || true; \
+  else \
+    echo "[c64debugger] attempting to fetch latest release asset from GitHub"; \
+    curl -fsSL https://api.github.com/repos/Slajerek/CS64/releases/latest \
+      | grep -Eo '"browser_download_url":\s*"[^"]+linux[^"]*\.zip"' \
+      | head -n1 | cut -d\" -f4 \
+      | xargs -r curl -fsSL -o /tmp/c64debugger.zip || true; \
+  fi; \
+  if [ -s /tmp/c64debugger.zip ]; then \
+    (cd /opt/c64debugger && unzip -q /tmp/c64debugger.zip) || true; \
+    rm -f /tmp/c64debugger.zip; \
+    C64DBG_BIN="$(find /opt/c64debugger -maxdepth 2 -type f -iname 'C64Debugger*' -executable | head -n1 || true)"; \
+    if [ -n "${C64DBG_BIN}" ]; then ln -sf "${C64DBG_BIN}" /usr/local/bin/c64debugger; fi; \
+  else \
+    echo "[c64debugger] no archive downloaded; skipping binary install"; \
+  fi; \
+  printf '%s\n' \
+    '[Desktop Entry]' 'Type=Application' 'Name=RetroArch' 'Exec=retroarch' 'Categories=Game;Emulator;' \
+    > /usr/share/applications/retroarch.desktop; \
+  printf '%s\n' \
+    '[Desktop Entry]' 'Type=Application' 'Name=MAME (Arcade)' 'Exec=/usr/games/mame' 'Categories=Game;Emulator;' \
+    > /usr/share/applications/mame.desktop; \
+  printf '%s\n' \
+    '[Desktop Entry]' 'Type=Application' 'Name=C64 Debugger' 'Exec=c64debugger' 'Categories=Development;Emulator;' \
+    > /usr/share/applications/c64debugger.desktop; \
+  apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# ===== Blender (official tarball) =====
+RUN set -eux; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64)  BL_ARCH="x64" ;; \
+    arm64)  BL_ARCH="aarch64" ;; \
+    *)      echo "Unsupported arch for Blender: $arch" >&2; exit 1 ;; \
+  esac; \
+  BL_MM="$(echo "${BLENDER_VERSION}" | awk -F. '{print $1 "." $2}')"; \
+  BL_TAR="blender-${BLENDER_VERSION}-linux-${BL_ARCH}.tar.xz"; \
+  curl -fsSL "https://download.blender.org/release/Blender${BL_MM}/${BL_TAR}" -o "/tmp/${BL_TAR}"; \
+  mkdir -p /opt/blender; \
+  tar -xf "/tmp/${BL_TAR}" -C /opt/blender; \
+  ln -sf "/opt/blender/blender-${BLENDER_VERSION}-linux-${BL_ARCH}/blender" /usr/local/bin/blender; \
+  rm -f "/tmp/${BL_TAR}"; \
+  chown -R "${DEFAULT_UID}:${DEFAULT_UID}" /opt/blender || true
+
+# ===== Install Claude Code =====
+RUN set -uex \
+  && npm install -g @anthropic-ai/claude-code
+
+# ===== Copy user configuration files =====
+COPY --chown=root:root userfs/ /tmp/userfs/
+
+# ===== Final user setup =====
+USER ${DEFAULT_USER}
+WORKDIR ${HOME}
+
+# ===== Environment paths =====
+ENV PATH=${PATH}:${HOME}/.dotnet:${HOME}/.dotnet/tools:${HOME}/.local/bin
+
+# ===== Copy user configs =====
+RUN if [ -d "/tmp/userfs" ]; then \
+        cp -r /tmp/userfs/. ${HOME}/ && \
+        sudo rm -rf /tmp/userfs; \
+    fi
+
+# ===== Git LFS setup =====  
+RUN git lfs install || true
+
+# ===== Set default working directory =====
+WORKDIR /work
+
+# ===== Expose common tool ports =====
+EXPOSE 8080 3000
+
+# ===== Cleanup to reduce image size =====
+RUN set -eux; \
+  echo "Cleaning up carbon-tools to reduce image size..."; \
+  # Remove npm cache
+  npm cache clean --force 2>/dev/null || true; \
+  # Remove pip cache
+  rm -rf /home/carbon/.cache/pip || true; \
+  # Remove Python __pycache__
+  find /usr -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true; \
+  # Clean up temp files (force as root, ignore permission errors)
+  find /tmp -mindepth 1 -delete 2>/dev/null || true; \
+  find /var/tmp -mindepth 1 -delete 2>/dev/null || true; \
+  echo "carbon-tools cleanup complete!"
+
+# ===== Switch back to root for supervisor (inherit from base) =====
+USER root
+
+# Inherit ENTRYPOINT from base (tini → supervisord)

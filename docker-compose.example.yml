@@ -1,0 +1,226 @@
+# Carbon Development Environment Suite - Docker Compose Example
+# https://github.com/wisejnrs/wisejnrs-carbon-runtime
+#
+# Usage:
+#   1. Copy this file: cp docker-compose.example.yml docker-compose.yml
+#   2. Edit configuration as needed
+#   3. Start services: docker compose up -d
+#   4. Stop services: docker compose down
+#
+# Access:
+#   - carbon-base noVNC:    http://localhost:6900
+#   - carbon-compute noVNC: http://localhost:6901
+#   - Jupyter Lab:          http://localhost:8888
+#   - code-server:          http://localhost:9999
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Carbon Base - Development Desktop
+  # Foundation with databases, languages, and desktop environment
+  # =============================================================================
+  carbon-base:
+    image: wisejnrs/carbon-base:latest
+    container_name: carbon-base
+    hostname: carbon-base
+
+    ports:
+      - "6900:6900"   # noVNC (web desktop)
+      - "5900:5901"   # VNC
+      - "3390:3389"   # xRDP (Remote Desktop)
+      # Optional database ports (uncomment if needed)
+      # - "5432:5432"   # PostgreSQL
+      # - "27017:27017" # MongoDB
+      # - "6379:6379"   # Redis
+      # - "6333:6333"   # Qdrant HTTP
+      # - "11434:11434" # Ollama API
+
+    volumes:
+      - ./work:/work           # Your workspace
+      - ./data:/data           # Database persistence
+      # Optional: Mount home directory for dotfiles
+      # - ./home:/home/carbon
+
+    environment:
+      # Security (change these!)
+      - CARBON_PASSWORD=Carbon123#
+      - VNC_PASSWORD=Carbon123#
+
+      # Service toggles (all disabled by default to save resources)
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+      - ENABLE_MOSQUITTO=false
+      - ENABLE_QDRANT=false
+      - ENABLE_OLLAMA=false
+
+      # Display settings
+      - RESOLUTION=1920x1080
+      - VNC_COL_DEPTH=24
+
+      # User settings (for file ownership)
+      # - CARBON_UID=1000
+      # - CARBON_GID=1000
+
+    deploy:
+      resources:
+        # GPU configuration (requires nvidia-docker2)
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+        # Resource limits (optional)
+        limits:
+          memory: 16G
+          cpus: '8'
+
+    restart: unless-stopped
+
+    # Shared memory size (increase for Chrome/Firefox)
+    shm_size: '2gb'
+
+  # =============================================================================
+  # Carbon Compute - ML/AI Workstation
+  # Full ML stack with PyTorch, TensorFlow, Jupyter, and vLLM
+  # =============================================================================
+  carbon-compute:
+    image: wisejnrs/carbon-compute:latest
+    container_name: carbon-compute
+    hostname: carbon-compute
+
+    ports:
+      - "6901:6900"   # noVNC (web desktop, different port to avoid conflict)
+      - "5901:5901"   # VNC
+      - "3391:3389"   # xRDP (different port to avoid conflict)
+      - "8888:8888"   # Jupyter Lab
+      - "9999:9999"   # code-server (VS Code in browser)
+      - "7077:7077"   # Spark Master
+      - "8080:8080"   # Spark Master UI
+      # Optional database ports (uncomment if needed)
+      # - "5433:5432"   # PostgreSQL (different port to avoid conflict)
+      # - "27018:27017" # MongoDB (different port to avoid conflict)
+
+    volumes:
+      - ./work:/work           # Your workspace
+      - ./data:/data           # Database persistence
+      # Optional: Separate data directories per service
+      # - ./compute-work:/work
+      # - ./compute-data:/data
+
+    environment:
+      # Security (change these!)
+      - CARBON_PASSWORD=Carbon123#
+      - VNC_PASSWORD=Carbon123#
+      - JUPYTER_PASSWORD=Carbon123#
+      - CODE_SERVER_PASSWORD=Carbon123#
+
+      # Service toggles
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+      - ENABLE_JUPYTER=true        # Usually want Jupyter for ML work
+      - ENABLE_CODE_SERVER=true    # Usually want code-server
+      - ENABLE_SPARK=false         # Enable for big data work
+      - ENABLE_OLLAMA=false
+      - ENABLE_VLLM=false          # Enable for LLM inference
+
+      # Display settings
+      - RESOLUTION=1920x1080
+      - VNC_COL_DEPTH=24
+
+      # Jupyter configuration
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_PORT=8888
+
+      # User settings
+      # - CARBON_UID=1000
+      # - CARBON_GID=1000
+
+    deploy:
+      resources:
+        # GPU configuration (ML workloads need GPU)
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
+
+        # Resource limits (ML needs more resources)
+        limits:
+          memory: 32G
+          cpus: '16'
+
+    restart: unless-stopped
+
+    # Shared memory size (important for PyTorch DataLoader)
+    shm_size: '8gb'
+
+  # =============================================================================
+  # Carbon Tools - Creative/Security/DevOps
+  # Blender, GIMP, security tools, retro emulators
+  # =============================================================================
+  carbon-tools:
+    image: wisejnrs/carbon-tools:latest
+    container_name: carbon-tools
+    hostname: carbon-tools
+
+    ports:
+      - "6902:6900"   # noVNC (different port to avoid conflict)
+      - "5902:5901"   # VNC
+      - "3392:3389"   # xRDP
+
+    volumes:
+      - ./work:/work
+      - ./data:/data
+      # Optional: Docker socket for DevOps work
+      # - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      # Security
+      - CARBON_PASSWORD=Carbon123#
+      - VNC_PASSWORD=Carbon123#
+
+      # Service toggles
+      - ENABLE_POSTGRESQL=false
+      - ENABLE_MONGODB=false
+      - ENABLE_REDIS=false
+
+      # Display settings (higher resolution for creative work)
+      - RESOLUTION=2560x1440
+      - VNC_COL_DEPTH=24
+
+    deploy:
+      resources:
+        # GPU configuration (for Blender GPU rendering)
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+
+        # Resource limits
+        limits:
+          memory: 24G
+          cpus: '12'
+
+    restart: unless-stopped
+
+    shm_size: '4gb'
+
+# =============================================================================
+# Volumes (optional - for named volumes instead of bind mounts)
+# =============================================================================
+# volumes:
+#   carbon-work:
+#   carbon-data:
+#   carbon-home:
+
+# =============================================================================
+# Networks (optional - for custom networking)
+# =============================================================================
+# networks:
+#   carbon-net:
+#     driver: bridge

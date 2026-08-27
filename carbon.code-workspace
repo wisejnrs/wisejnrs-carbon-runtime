@@ -1,0 +1,105 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "🏠 Carbon Root"
+    },
+    {
+      "path": "carbon-base",
+      "name": "📦 Carbon Base"
+    },
+    {
+      "path": "carbon-compute",
+      "name": "🧪 Carbon Compute (ML/AI)"
+    },
+    {
+      "path": "carbon-tools",
+      "name": "🛠️ Carbon Tools"
+    },
+    {
+      "path": "scripts",
+      "name": "📜 Helper Scripts"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/.DS_Store": true,
+      "**/__pycache__": true,
+      "**/*.pyc": true,
+      "**/node_modules": true
+    },
+    "search.exclude": {
+      "**/.git": true,
+      "**/node_modules": true,
+      "**/.venv": true,
+      "**/build": true,
+      "**/dist": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-azuretools.vscode-docker",
+      "ms-vscode-remote.remote-containers",
+      "ms-python.python",
+      "ms-toolsai.jupyter",
+      "foxundermoon.shell-format",
+      "redhat.vscode-yaml",
+      "esbenp.prettier-vscode",
+      "eamodio.gitlens"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Python in carbon-compute",
+        "type": "python",
+        "request": "attach",
+        "connect": {
+          "host": "localhost",
+          "port": 5678
+        },
+        "pathMappings": [
+          {
+            "localRoot": "${workspaceFolder}/work",
+            "remoteRoot": "/work"
+          }
+        ]
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "🚀 Start ML Environment",
+        "type": "shell",
+        "command": "./scripts/dc-up.sh ml",
+        "problemMatcher": [],
+        "group": "none"
+      },
+      {
+        "label": "🛑 Stop All Services",
+        "type": "shell",
+        "command": "./scripts/dc-down.sh",
+        "problemMatcher": [],
+        "group": "none"
+      },
+      {
+        "label": "📊 View Status",
+        "type": "shell",
+        "command": "./scripts/carbon-status.sh",
+        "problemMatcher": [],
+        "group": "none"
+      },
+      {
+        "label": "🏗️ Build All Images",
+        "type": "shell",
+        "command": "./build-all.sh --all",
+        "problemMatcher": [],
+        "group": "build"
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Apply Mint-Relaxed Theme
+Exec=/usr/local/bin/apply-mint-relaxed.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
