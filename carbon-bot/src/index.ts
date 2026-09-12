@@ -6,7 +6,7 @@ import { config } from './config.js';
 import { ai, commands } from './commands/index.js';
 import { contextMenuCommands, handleInteraction } from './interactions.js';
 import { createProgressDisplay, runGroundedChat, replyFooter } from './chat.js';
-import { getHistory } from './ai/index.js';
+import { getHistory, pushHistory, fallbackChat, fallbackLabel } from './ai/index.js';
 import { devChannelsAvailable, devChat, repoForChannel, resetDevSession } from './dev.js';
 import { startHealthServer } from './health.js';
 import { startProactive } from './proactive.js';
@@ -407,10 +407,38 @@ if (chatEnabled) {
       markClaudeOk(); // success → indicator green
     } catch (error) {
       console.error('[mention] AI request failed:', error);
-      void message.react('❌').catch(() => {});
       const health = classifyClaudeError(error);
       setClaudeHealth(health);
-      if (health.kind !== 'other') await message.reply(healthReply(health)).catch(() => {});
+      // Self-heal: when Claude is capped/overloaded, keep talking via the local
+      // no-spend fallback (Ollama) instead of going dark. Tools, house control and
+      // dev sessions still need Claude, so the note says so.
+      let handled = false;
+      if ((health.kind === 'session_limit' || health.kind === 'overloaded') && config.fallbackProvider !== 'none') {
+        const answer = await fallbackChat(
+          [...getHistory(message.channelId), { role: 'user', content }],
+          config.systemPrompt +
+            '\n\nIMPORTANT: You are a LOCAL FALLBACK model, answering only because Claude has hit its ' +
+            'usage limit. You have NO tools, house controls, memory, files or web access — answer briefly ' +
+            'from general knowledge, and if the request needs any of those, say it has to wait until Claude is back.',
+        ).catch(() => null);
+        if (answer) {
+          handled = true;
+          const resets = health.kind === 'session_limit' && health.resetsAt ? ` (resets ${health.resetsAt})` : '';
+          const note = `⚠️ _Claude's capped${resets} — answering via ${fallbackLabel()}; house tools & dev are paused until it's back._\n\n`;
+          const out = note + answer;
+          await message.reply(out.slice(0, 2000)).catch(() => {});
+          if (out.length > 2000 && 'send' in message.channel) {
+            for (let i = 2000; i < out.length; i += 1990) await message.channel.send(out.slice(i, i + 1990));
+          }
+          pushHistory(message.channelId, { role: 'assistant', content: answer });
+          void message.reactions.cache.get('👀')?.users.remove(client.user.id).catch(() => {});
+          void message.react('♻️').catch(() => {}); // answered via fallback
+        }
+      }
+      if (!handled) {
+        void message.react('❌').catch(() => {});
+        if (health.kind !== 'other') await message.reply(healthReply(health)).catch(() => {});
+      }
     }
   });
 }

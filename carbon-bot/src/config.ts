@@ -28,6 +28,18 @@ export const config = {
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o',
   // "default" inherits whatever model the local Claude Code login uses.
   claudeCodeModel: process.env.CLAUDE_CODE_MODEL ?? 'default',
+  // Self-heal fallback when the Claude subscription is rate-limited (weekly/session
+  // cap): keep answering CHAT via a local, no-spend Ollama model. 'openai' uses the
+  // metered OpenAI key instead; 'none' disables (bot just posts the limit notice).
+  // Agentic/dev/tool work still requires Claude — only conversation falls back.
+  fallbackProvider: (process.env.FALLBACK_PROVIDER ?? 'ollama') as 'ollama' | 'openai' | 'none',
+  ollamaUrl: process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434/v1',
+  // 'auto' (default) = read the per-host pick from llm-fit.json (written daily by
+  // house/tools/llm_fit.py from `llmfit fit --json` + Ollama's installed tags);
+  // set an explicit tag to pin. ollamaModelDefault is the last-resort fallback.
+  ollamaModel: process.env.OLLAMA_MODEL ?? 'auto',
+  ollamaModelDefault: process.env.OLLAMA_MODEL_DEFAULT ?? 'qwen3.5:4b',
+  llmFitFile: process.env.LLM_FIT_FILE ?? '/work/wisejnrs-projects/house/data/llm-fit.json',
   // chat: no tools (pure conversation). readonly: skills + read-only tools.
   // full: skills + all tools, auto-approved - anyone in the server can drive them.
   claudeCodeMode: (['chat', 'readonly', 'full'].includes(process.env.CLAUDE_CODE_MODE ?? 'chat')
