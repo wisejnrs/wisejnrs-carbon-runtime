@@ -10,7 +10,89 @@ const execFileAsync = promisify(execFile);
 // Discord's 3-step voice-message upload (flag 1<<13) with a real waveform.
 
 export function voiceAvailable(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.OPENAI_API_KEY || config.geminiApiKey);
+}
+
+export const OPENAI_BILLING_URL = 'https://platform.openai.com/settings/organization/billing';
+
+function isOutOfCredits(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /\(429\)/.test(msg) && /credit|quota|billing/i.test(msg);
+}
+
+function mimeFor(filename: string): string {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  return (
+    { ogg: 'audio/ogg', opus: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', wav: 'audio/wav', webm: 'audio/webm', flac: 'audio/flac', aac: 'audio/aac' } as Record<string, string>
+  )[ext] ?? 'audio/ogg';
+}
+
+// Gemini understands audio natively, so it doubles as a transcriber when
+// OpenAI is unavailable (no credits, outage). Verbatim transcript, nothing else.
+export async function transcribeAudioGemini(buffer: Buffer, filename = 'voice.ogg'): Promise<string> {
+  if (!config.geminiApiKey) throw new Error('Gemini transcription unavailable: GEMINI_API_KEY not set');
+  const model = process.env.GEMINI_STT_MODEL ?? 'gemini-2.5-flash';
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.geminiApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: 'Transcribe this audio verbatim in its original language. Return only the transcript text, no preamble, no labels.' },
+              { inline_data: { mime_type: mimeFor(filename), data: buffer.toString('base64') } },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0 },
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Gemini transcription failed (${response.status}): ${(await response.text()).slice(0, 150)}`);
+  }
+  const data = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+  if (!text) throw new Error('Gemini returned an empty transcript');
+  return text;
+}
+
+/**
+ * Transcribe with OpenAI first, then Gemini. Returns the transcript plus an
+ * optional one-line `notice` for the channel when OpenAI is out of credits
+ * (so the task still completes AND someone knows to top up).
+ */
+export async function transcribeAudioWithFallback(
+  buffer: Buffer,
+  filename = 'voice.ogg',
+): Promise<{ text: string; provider: 'openai' | 'gemini'; notice?: string }> {
+  let openaiError: unknown = null;
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      return { text: await transcribeAudio(buffer, filename), provider: 'openai' };
+    } catch (error) {
+      openaiError = error;
+      console.warn('[voice] OpenAI transcription failed, trying Gemini:', error instanceof Error ? error.message : error);
+    }
+  }
+  const credits = isOutOfCredits(openaiError);
+  try {
+    const text = await transcribeAudioGemini(buffer, filename);
+    return {
+      text,
+      provider: 'gemini',
+      notice: credits
+        ? `⚠️ OpenAI credits are out — I transcribed this with Gemini instead. Top up at ${OPENAI_BILLING_URL}`
+        : undefined,
+    };
+  } catch (geminiError) {
+    const why = credits
+      ? `OpenAI has no credits (top up at ${OPENAI_BILLING_URL}) and Gemini failed too`
+      : `OpenAI and Gemini both failed`;
+    throw new Error(`⚠️ Couldn't transcribe the voice note: ${why}. Please type it.`, { cause: geminiError });
+  }
 }
 
 export async function transcribeAudio(buffer: Buffer, filename = 'voice.ogg'): Promise<string> {

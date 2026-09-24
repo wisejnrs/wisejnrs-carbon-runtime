@@ -13,7 +13,7 @@ import { startProactive } from './proactive.js';
 import { startDetectorService } from './reolinkDetector.js';
 import { startRobovacService } from './robovacService.js';
 import { startGarageService } from './garageService.js';
-import { sendVoiceReply, speechify, transcribeAudio, voiceAvailable } from './voice.js';
+import { sendVoiceReply, speechify, transcribeAudioWithFallback, voiceAvailable } from './voice.js';
 import { startVoiceSession, voiceSessionActive } from './voicechannel.js';
 import { startWhatsApp } from './whatsapp.js';
 import { setDiscordClient, setDiscordRequestContext } from './discordTools.js';
@@ -71,20 +71,34 @@ installGlobalBrowserUA();
 // Transcribe every audio attachment on a message (voice notes AND uploaded
 // voicemail files), so someone can dump several recordings at once. Returns
 // the combined transcript, or null when there's no audio.
+// Say "OpenAI credits are out" at most once an hour per channel, not on every clip.
+const voiceNoticeAt = new Map<string, number>();
+async function voiceNotice(message: import('discord.js').Message, text: string): Promise<void> {
+  const last = voiceNoticeAt.get(message.channelId) ?? 0;
+  if (Date.now() - last < 60 * 60 * 1000) return;
+  voiceNoticeAt.set(message.channelId, Date.now());
+  await message.reply(text).catch(() => {});
+}
+
 async function voiceToText(message: import('discord.js').Message): Promise<string | null> {
   const clips = [...message.attachments.values()].filter((a) => a.contentType?.startsWith('audio/'));
   if (!clips.length || !voiceAvailable()) return null;
   const parts: string[] = [];
+  let failure: string | null = null;
   for (const clip of clips) {
     try {
       const buffer = Buffer.from(await (await fetch(clip.url)).arrayBuffer());
-      const transcript = await transcribeAudio(buffer, clip.name ?? 'voice.ogg');
+      const { text: transcript, provider, notice } = await transcribeAudioWithFallback(buffer, clip.name ?? 'voice.ogg');
       if (transcript) parts.push(clips.length > 1 ? `[${clip.name ?? 'clip'}] ${transcript}` : transcript);
-      console.log(`[voice] transcribed ${Math.round(buffer.length / 1024)}KB -> "${transcript.slice(0, 60)}"`);
+      console.log(`[voice] transcribed ${Math.round(buffer.length / 1024)}KB via ${provider} -> "${transcript.slice(0, 60)}"`);
+      if (notice) await voiceNotice(message, notice);
     } catch (error) {
       console.warn('[voice] transcription failed for', clip.name, error);
+      failure = error instanceof Error ? error.message : String(error);
     }
   }
+  // Nothing transcribed at all: tell the channel why instead of going silent.
+  if (!parts.length && failure) await message.reply(failure.slice(0, 1900)).catch(() => {});
   return parts.length ? parts.join('\n\n') : null;
 }
 
