@@ -181,19 +181,40 @@ export async function devChat(
     systemPrompt: systemPrompt + (config.extraContext ? `\n\n${config.extraContext}` : ''),
   };
 
-  let result = '';
-  for await (const message of query({ prompt, options })) {
-    if (message.type === 'system' && message.subtype === 'init') {
-      setDevSession(channelId, message.session_id, repoPath);
-    } else if (message.type === 'assistant') {
-      for (const block of message.message.content) {
-        if (block.type === 'tool_use') onProgress?.(describeToolUse(block.name, block.input));
+  const run = async (): Promise<string> => {
+    let result = '';
+    for await (const message of query({ prompt, options })) {
+      if (message.type === 'system' && message.subtype === 'init') {
+        setDevSession(channelId, message.session_id, repoPath);
+      } else if (message.type === 'assistant') {
+        for (const block of message.message.content) {
+          if (block.type === 'tool_use') onProgress?.(describeToolUse(block.name, block.input));
+        }
+      } else if (message.type === 'result') {
+        result =
+          message.subtype === 'success'
+            ? message.result
+            : `Session ended without an answer (${message.subtype}). Try again or send !reset.`;
       }
-    } else if (message.type === 'result') {
-      result =
-        message.subtype === 'success'
-          ? message.result
-          : `Session ended without an answer (${message.subtype}). Try again or send !reset.`;
+    }
+    return result;
+  };
+
+  let result: string;
+  try {
+    result = await run();
+  } catch (error) {
+    // Claude Code prunes transcripts after ~30 days; a channel idle that long
+    // still carries its old session id and every resume then fails with
+    // "No conversation found with session ID …". Drop it and start fresh once.
+    const msg = error instanceof Error ? error.message : String(error);
+    if (options.resume && /No conversation found/i.test(msg)) {
+      console.warn(`[dev] stale session ${options.resume} for ${channelId} — starting a fresh one`);
+      clearDevSession(channelId);
+      delete options.resume;
+      result = await run();
+    } else {
+      throw error;
     }
   }
   return { text: result || '(no response)', files: await collectArtifacts(repoPath, startedAt) };
